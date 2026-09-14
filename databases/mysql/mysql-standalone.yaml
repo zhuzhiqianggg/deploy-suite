@@ -1,0 +1,474 @@
+# MySQL内部部署配置 - 单机模式
+# 在Kubernetes集群内部署MySQL服务
+# 适用于开发、测试环境或需要完全控制的场景
+#
+# 简化模式：镜像、资源、storage_class、image_pull_secrets 等最佳实践默认值
+# 直接写死在本模板里，生成器只传递基础配置（凭据、db_mode、databases 等）。
+# 资源规格由 products.db.global.resource_profile 控制：
+# - small（测试）：内存 2Gi，buffer_pool 512M / medium（生产默认）：内存 4Gi，buffer_pool 1G
+#
+# 内存规则（2026-08-25 修订）：内存 request = limit——buffer_pool 常驻内存 + 连接/临时表
+# 开销会吃满 limit，request=limit 让调度器按真实占用预留，节点不超卖。
+# innodb_buffer_pool_size 按档位派生（≈ limit 的 25%~50%）。
+#
+# ⚠️ NFS权限要求：
+# 如果使用NFS存储，需要确保数据目录有写权限（建议777）：
+#   chmod -R 777 /data/nfs/<namespace>/mysql
+# 本模板使用root用户运行MySQL以避免NFS权限问题# MySQL配置文件
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-mysql-config
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql
+    type: database-config
+    deployment-mode: internal
+  annotations:
+    description: "MySQL数据库服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+data:
+  my.cnf: |
+    [mysqld]
+    # 基础配置
+    server-id = 1
+
+    # 字符集配置
+    character-set-server = utf8mb4
+    collation-server = utf8mb4_unicode_ci
+
+    # 连接配置
+    max_connections = 200
+    max_connect_errors = 1000
+    open_files_limit = 65535
+    table_open_cache = 128
+    max_allowed_packet = 500M
+    binlog_cache_size = 1M
+    max_heap_table_size = 8M
+    tmp_table_size = 16M
+
+    # InnoDB配置（buffer_pool 按档位派生：small 512M / medium 1G / large 4G）
+    innodb_buffer_pool_size = 1G
+    innodb_flush_log_at_trx_commit = 2
+    innodb_lock_wait_timeout = 50
+    innodb_log_buffer_size = 8M
+    innodb_log_file_size = 256M
+    innodb_max_dirty_pages_pct = 90
+    innodb_file_per_table = 1
+
+    # 二进制日志配置
+    log-bin = mysql-bin
+    binlog_format = ROW
+    binlog_expire_logs_seconds = 604800
+
+    # 慢查询日志
+    slow_query_log = 1
+    slow_query_log_file = /var/log/mysql/mysql-slow.log
+    long_query_time = 2
+
+    # 错误日志
+    log-error = /var/log/mysql/error.log
+
+    # 安全配置
+    skip-name-resolve
+
+    [mysql]
+    default-character-set = utf8mb4
+
+    [client]
+    default-character-set = utf8mb4
+
+# MySQL使用命名空间共享存储，不需要独立的PVC
+
+---
+# MySQL认证信息 - Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-mysql-secret
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql
+    type: database-secret
+    deployment-mode: internal
+  annotations:
+    description: "MySQL认证信息"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+type: Opaque
+data:
+  # 基础连接信息
+  host: bXlzcWwtc2VydmljZS5kYi1saWFuYW50ZWNoLWhrLXJlbGVhc2Uuc3ZjLmNsdXN0ZXIubG9jYWw=
+  port: MzMwNg==
+
+  # root账号信息
+  root_username: cm9vdA==
+  root_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+
+  # 数据库分配信息
+  
+  
+  api_database: YXBp
+  api_username: YXBpX3VzZXI=
+  api_password: T01Qd3BVMzRPbEhTWFZJNA==
+  
+  
+  
+  trace_database: dHJhY2U=
+  trace_username: cm9vdA==
+  trace_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+  
+  
+  
+  kya_database: a3lh
+  kya_username: a3lhX3VzZXI=
+  kya_password: QjhYWWZlSmkzNXJkVlVkbQ==
+  
+  
+  
+  kyt_database: a3l0
+  kyt_username: a3l0X3VzZXI=
+  kyt_password: TmE3TUFPNnpOVWVVZVFiMA==
+  
+  
+  
+  bms_database: Ym1z
+  bms_username: cm9vdA==
+  bms_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+  
+  
+  
+  common_database: Y29tbW9u
+  common_username: cm9vdA==
+  common_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+  
+  
+  
+  user_database: dXNlcg==
+  user_username: cm9vdA==
+  user_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+  
+  
+  
+  xxljobadmin_database: eHhsam9iYWRtaW4=
+  xxljobadmin_username: cm9vdA==
+  xxljobadmin_password: elRjS3diS0NDUnlxQWczdmxVMmc=
+  
+  
+  
+  
+
+  # 连接字符串 - 使用root账号
+  connection_string: bXlzcWw6Ly9yb290OnpUY0t3YktDQ1J5cUFnM3ZsVTJnQG15c3FsLXNlcnZpY2UuZGItbGlhbmFudGVjaC1oay1yZWxlYXNlLnN2Yy5jbHVzdGVyLmxvY2FsOjMzMDY=
+
+---
+# MySQL部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-mysql
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql
+    type: database
+    deployment-mode: internal
+  annotations:
+    description: "MySQL数据库服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # 单机模式使用Recreate策略确保数据一致性
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: mysql
+        type: database
+        deployment-mode: internal
+      annotations:
+        description: "MySQL数据库服务"
+    spec:
+      serviceAccountName: db-lianantech-hk-release-sa
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      securityContext:
+        fsGroup: 999
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: mysql
+      # 初始化容器 - 确保数据目录权限正确
+      initContainers:
+      - name: init-permissions
+        image: docker.io/library/busybox:1.38.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          echo "初始化MySQL数据目录权限..."
+          mkdir -p /var/lib/mysql /var/log/mysql
+          chown -R 999:999 /var/lib/mysql /var/log/mysql
+          chmod -R 755 /var/lib/mysql
+          echo "权限设置完成"
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+          subPath: mysql/standalone/data
+        - name: data
+          mountPath: /var/log/mysql
+          subPath: mysql/standalone/logs
+      containers:
+      - name: mysql
+        image: docker.io/library/mysql:8.4
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3306
+          name: mysql
+          protocol: TCP
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "zTcKwbKCCRyqAg3vlU2g"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+          subPath: mysql/standalone/data
+        - name: data
+          mountPath: /var/log/mysql
+          subPath: mysql/standalone/logs
+        - name: mysql-config
+          mountPath: /etc/mysql/conf.d/my.cnf
+          subPath: my.cnf
+        resources:
+          requests:
+            cpu: 500m
+            memory: 4Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+            - -u
+            - root
+            - -p$(MYSQL_ROOT_PASSWORD)
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+            - -u
+            - root
+            - -p$(MYSQL_ROOT_PASSWORD)
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: mysql-config
+        configMap:
+          name: db-mysql-config
+          defaultMode: 0644
+      - name: data
+        persistentVolumeClaim:
+          claimName: db-lianantech-hk-release-pvc
+---
+# MySQL服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql
+    type: database-service
+    deployment-mode: internal
+  annotations:
+    description: "MySQL数据库服务"
+    deployment.type: "internal"
+    service.type: "database"
+    databases.count: "9"
+    
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
+  selector:
+    app: mysql
+  # 集群内访问地址: mysql-service.db-lianantech-hk-release.svc.cluster.local:3306
+
+---
+# MySQL Exporter - 监控指标导出（与 MySQL 同文件，作为 MySQL 套件的一部分）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-exporter
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql-exporter
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: mysql-exporter
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      containers:
+      - name: mysql-exporter
+        image: docker.io/prom/mysqld-exporter:v0.15.1
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config.my-cnf=/etc/mysql-exporter/.my.cnf
+        ports:
+        - name: metrics
+          containerPort: 9104
+          protocol: TCP
+        volumeMounts:
+        - name: exporter-config
+          mountPath: /etc/mysql-exporter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      volumes:
+      - name: exporter-config
+        configMap:
+          name: db-mysql-exporter-config
+---
+# MySQL Exporter 连接配置 (mysqld-exporter v0.15.1 起改用 .my.cnf, 不再支持 DATA_SOURCE_NAME)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-mysql-exporter-config
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql-exporter
+data:
+  .my.cnf: |
+    [client]
+    user=root
+    password=zTcKwbKCCRyqAg3vlU2g
+    host=mysql-service.db-lianantech-hk-release.svc.cluster.local
+    port=3306
+    protocol=tcp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-exporter-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql-exporter
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql-exporter
+  ports:
+  - name: metrics
+    port: 9104
+    targetPort: metrics
+    protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mysql-exporter-monitor
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: mysql-exporter
+    component: monitoring
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: mysql-exporter
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: false

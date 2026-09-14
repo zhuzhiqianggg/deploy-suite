@@ -1,0 +1,70 @@
+apiVersion: v1
+data:
+  access-log-path: /var/log/nginx/access.log
+  add-headers: ingress-nginx/custom-headers
+  allow-snippet-annotations: "true"
+  brotli-level: "4"
+  brotli-types: application/atom+xml application/javascript application/json application/rss+xml
+    application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json
+    application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon
+    text/css text/javascript text/plain text/x-component
+  client-body-buffer-size: 128k
+  client-body-timeout: "60"
+  client-header-timeout: "60"
+  enable-brotli: "true"
+  enable-real-ip: "true"
+  error-log-path: /var/log/nginx/error.log
+  forwarded-for-header: X-Forwarded-For
+  gzip-level: "6"
+  gzip-min-length: "1024"
+  gzip-types: application/atom+xml application/javascript application/json application/rss+xml
+    application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json
+    application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon
+    text/css text/javascript text/plain text/x-component
+  hide-headers: Server,X-Powered-By
+  keepalive-requests: "100"
+  keepalive-timeout: "75"
+  large-client-header-buffers: 4 16k
+  log-format-escape-json: "true"
+  log-format-upstream: '{"time_iso8601":"$time_iso8601","request_id":"$req_id","remote_addr":"$remote_addr","realip_remote_addr":"$realip_remote_addr","http_x_forwarded_for":"$http_x_forwarded_for","request_method":"$request_method","host":"$host","uri":"$uri","request_uri":"$request_uri","scheme":"$scheme","status":"$status","body_bytes_sent":"$body_bytes_sent","bytes_sent":"$bytes_sent","http_user_agent":"$http_user_agent","request_length":"$request_length","request_time":"$request_time","upstream_addr":"$upstream_addr","upstream_status":"$upstream_status","upstream_connect_time":"$upstream_connect_time","upstream_header_time":"$upstream_header_time","upstream_response_time":"$upstream_response_time","upstream_response_length":"$upstream_response_length","ssl_protocol":"$ssl_protocol"}'
+  map-hash-bucket-size: "128"
+  max-worker-open-files: "65535"
+  proxy-body-size: 50m
+  proxy-buffer-size: 16k
+  proxy-buffers-number: "8"
+  proxy-connect-timeout: "60"
+  proxy-next-upstream: error timeout http_502 http_503 http_504
+  proxy-next-upstream-timeout: "10"
+  proxy-next-upstream-tries: "3"
+  proxy-read-timeout: "60"
+  proxy-real-ip-cidr: 192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.0.0.0/8
+  proxy-send-timeout: "60"
+  real-ip-header: X-Forwarded-For
+  server-tokens: "false"
+  ssl-ciphers: ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+  ssl-prefer-server-ciphers: "true"
+  ssl-protocols: TLSv1.2 TLSv1.3
+  ssl-session-cache: shared:SSL:10m
+  ssl-session-tickets: "false"
+  ssl-session-timeout: 10m
+  upstream-keepalive-connections: "32"
+  upstream-keepalive-timeout: "60"
+  use-forwarded-headers: "true"
+  use-gzip: "true"
+  worker-connections: "65535"
+  worker-processes: auto
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"access-log-path":"/var/log/nginx/access.log","add-headers":"ingress-nginx/custom-headers","allow-snippet-annotations":"true","brotli-level":"4","brotli-types":"application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/javascript text/plain text/x-component","client-body-buffer-size":"128k","client-body-timeout":"60","client-header-timeout":"60","enable-brotli":"true","enable-real-ip":"true","error-log-path":"/var/log/nginx/error.log","forwarded-for-header":"X-Forwarded-For","gzip-level":"6","gzip-min-length":"1024","gzip-types":"application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/javascript text/plain text/x-component","hide-headers":"Server,X-Powered-By","keepalive-requests":"100","keepalive-timeout":"75","large-client-header-buffers":"4 16k","log-format-escape-json":"true","log-format-upstream":"{\"time_iso8601\":\"$time_iso8601\",\"request_id\":\"$req_id\",\"remote_addr\":\"$remote_addr\",\"realip_remote_addr\":\"$realip_remote_addr\",\"http_x_forwarded_for\":\"$http_x_forwarded_for\",\"request_method\":\"$request_method\",\"host\":\"$host\",\"uri\":\"$uri\",\"request_uri\":\"$request_uri\",\"scheme\":\"$scheme\",\"status\":\"$status\",\"body_bytes_sent\":\"$body_bytes_sent\",\"bytes_sent\":\"$bytes_sent\",\"http_user_agent\":\"$http_user_agent\",\"request_length\":\"$request_length\",\"request_time\":\"$request_time\",\"upstream_addr\":\"$upstream_addr\",\"upstream_status\":\"$upstream_status\",\"upstream_connect_time\":\"$upstream_connect_time\",\"upstream_header_time\":\"$upstream_header_time\",\"upstream_response_time\":\"$upstream_response_time\",\"upstream_response_length\":\"$upstream_response_length\",\"ssl_protocol\":\"$ssl_protocol\"}","map-hash-bucket-size":"128","max-worker-open-files":"65535","proxy-body-size":"50m","proxy-buffer-size":"16k","proxy-buffers-number":"8","proxy-connect-timeout":"60","proxy-next-upstream":"error timeout http_502 http_503 http_504","proxy-next-upstream-timeout":"10","proxy-next-upstream-tries":"3","proxy-read-timeout":"60","proxy-real-ip-cidr":"192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.0.0.0/8","proxy-send-timeout":"60","real-ip-header":"X-Forwarded-For","server-tokens":"false","ssl-ciphers":"ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384","ssl-prefer-server-ciphers":"true","ssl-protocols":"TLSv1.2 TLSv1.3","ssl-session-cache":"shared:SSL:10m","ssl-session-tickets":"false","ssl-session-timeout":"10m","upstream-keepalive-connections":"32","upstream-keepalive-timeout":"60","use-forwarded-headers":"true","use-gzip":"true","worker-connections":"65535","worker-processes":"auto"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app.kubernetes.io/component":"controller","app.kubernetes.io/instance":"ingress-nginx","app.kubernetes.io/name":"ingress-nginx","app.kubernetes.io/part-of":"ingress-nginx"},"name":"ingress-nginx-controller","namespace":"ingress-nginx"}}
+  creationTimestamp: "2025-10-27T07:01:42Z"
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  resourceVersion: "91680257"
+  uid: 9623e847-1db6-43e9-89e4-d9159f9153d8

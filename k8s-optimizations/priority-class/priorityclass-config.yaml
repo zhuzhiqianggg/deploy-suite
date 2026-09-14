@@ -1,0 +1,71 @@
+# ============================================================================
+# Kubernetes Pod 驱逐优先级分层配置
+# ============================================================================
+# 原理：priorityClass value 越大，Pod 优先级越高，越不容易被驱逐
+#       kubelet 驱逐时先驱逐 value 小的 Pod
+#
+# 优先级分层（从低到高，先驱逐 → 后驱逐）：
+#   temp-priority   (100)      → 临时环境（*-temp, db-verify-*）
+#   test-priority   (1000)     → 测试环境（*-test）
+#   pre-priority    (5000)     → 预发环境（*-pre）★ 优先驱逐
+#   prod-priority   (100000)   → 生产环境（*-prod, *-release）
+#   系统内置：
+#   system-cluster-critical (2000000000) → 系统组件（CoreDNS等）
+#   system-node-critical    (2000001000) → 节点组件（kube-proxy等）
+# ============================================================================
+
+---
+# 临时环境优先级（最低，最先驱逐）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: temp-priority
+  annotations:
+    description: "临时环境优先级，最先被驱逐（db-verify-*等）"
+value: 100
+globalDefault: false
+preemptionPolicy: Never  # 不抢占其他Pod，只影响驱逐顺序
+---
+# 测试环境优先级（低优先级）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: test-priority
+  annotations:
+    description: "测试环境优先级，资源压力时优先驱逐（*-test）"
+value: 1000
+globalDefault: false
+preemptionPolicy: Never
+---
+# 预发环境优先级（中低，用户指定的优先驱逐目标）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: pre-priority
+  annotations:
+    description: "预发环境优先级，资源压力时优先驱逐（*-pre）"
+value: 5000
+globalDefault: false
+preemptionPolicy: Never
+---
+# 生产环境优先级（高，最后驱逐）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: prod-priority
+  annotations:
+    description: "生产环境优先级，资源压力时最后驱逐（*-prod, *-release）"
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority  # 允许抢占低优先级Pod
+---
+# 默认优先级（未指定时使用，低于生产但高于测试）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: default-priority
+  annotations:
+    description: "默认优先级，未显式指定时使用"
+value: 10000
+globalDefault: true
+preemptionPolicy: Never

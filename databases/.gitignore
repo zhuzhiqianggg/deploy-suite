@@ -1,0 +1,2 @@
+# 明文密码环境文件（generate-passwords.sh 可重新生成，不入库）
+scripts/passwords.env

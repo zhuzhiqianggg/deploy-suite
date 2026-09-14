@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:8.8
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    environment:
+      TZ: Asia/Shanghai
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-ChangeMe_123456}"]
+    volumes:
+      - /data/redis/data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-ChangeMe_123456}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

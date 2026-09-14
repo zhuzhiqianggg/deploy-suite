@@ -1,0 +1,422 @@
+# Redis内部部署配置 - 单机模式
+# 在Kubernetes集群内部署Redis服务
+# 适用于开发、测试环境或需要完全控制的场景
+#
+# 简化模式：镜像、storage_class、image_pull_secrets 等最佳实践默认值
+# 直接写死在本模板里，生成器只传递基础配置（凭据、db_mode、databases 等）。
+# 资源规格由 products.db.global.resource_profile 控制：
+# - small（测试）：maxmemory 512mb，内存 1Gi / medium（生产默认）：maxmemory 2gb，内存 4Gi
+#
+# 内存规则（2026-08-25 修订）：内存 request = limit——Redis 数据集常驻内存，
+# request=limit 让调度器按真实占用预留，节点不超卖；CPU 保持 req 低 / lim 高。
+# maxmemory ≈ limit 的 50%，剩余留给 fork COW（bgsave/aofrewrite 写时复制）与碎片。# Redis配置文件
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis
+    type: database-config
+    deployment-mode: internal
+  annotations:
+    description: "Redis缓存服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+data:
+  redis.conf: |
+    # Redis单机配置 - release环境
+
+    # 网络配置
+    bind 0.0.0.0
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+
+    # 通用配置
+    daemonize no
+    supervised no
+    pidfile /var/run/redis_6379.pid
+    loglevel notice
+    logfile ""
+    databases 16
+
+    # 快照配置（写死值）
+    save 900 1 300 10 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+
+    # 安全配置
+    requirepass #B7PTagA1B6#*pL@rwJ#
+    # 客户端配置（写死值）
+    maxclients 10000
+
+    # 内存管理（按 resource_profile 档位派生，maxmemory ≈ limit 的 50%）
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+
+    # AOF配置（写死值）
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+
+    # 慢日志配置
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+    # 延迟监控
+    latency-monitor-threshold 100
+
+    # 高级配置
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+
+    # 活跃重新哈希
+    activerehashing yes
+
+    # 客户端输出缓冲区限制
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+
+    # 频率配置
+    hz 10
+    dynamic-hz yes
+
+  # 数据库配置信息
+  databases.json: |
+    {"default": {"index": 0, "description": "default 业务缓存"},
+      "api": {"index": 4, "description": "api 业务缓存"},
+      "trace": {"index": 5, "description": "trace 业务缓存"},
+      "bms": {"index": 6, "description": "bms 业务缓存"},
+      "kya": {"index": 11, "description": "kya 业务缓存"},
+      "kyt": {"index": 7, "description": "kyt 业务缓存"},
+      "common": {"index": 8, "description": "common 业务缓存"},
+      "user": {"index": 9, "description": "user 业务缓存"}
+    }
+# Redis使用命名空间共享存储，不需要独立的PVC
+
+---
+# Redis部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis
+    type: database
+    deployment-mode: internal
+  annotations:
+    description: "Redis缓存服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # 缓存使用Recreate策略确保数据一致性
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: redis
+        type: database
+        deployment-mode: internal
+      annotations:
+        description: "Redis缓存服务"
+    spec:
+      serviceAccountName: db-lianantech-hk-release-sa
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      securityContext:
+        fsGroup: 999
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: redis
+      # 初始化容器 - 确保数据目录权限正确
+      initContainers:
+      - name: init-permissions
+        image: docker.io/library/busybox:1.38.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          echo "初始化Redis数据目录权限..."
+          mkdir -p /data
+          chown -R 999:999 /data
+          chmod -R 755 /data
+          echo "权限设置完成"
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          subPath: redis/standalone/data
+      containers:
+      - name: redis
+        image: docker.io/library/redis:7.4
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          value: "#B7PTagA1B6#*pL@rwJ#"
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: data
+          mountPath: /data
+          subPath: redis/standalone/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 4Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -h
+            - localhost
+            - -p
+            - "6379"
+            - -a
+            - "#B7PTagA1B6#*pL@rwJ#"
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -h
+            - localhost
+            - -p
+            - "6379"
+            - -a
+            - "#B7PTagA1B6#*pL@rwJ#"
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+          items:
+          - key: redis.conf
+            path: redis.conf
+      - name: data
+        persistentVolumeClaim:
+          claimName: db-lianantech-hk-release-pvc
+---
+# Redis服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis
+    type: database-service
+    deployment-mode: internal
+  annotations:
+    description: "Redis缓存服务"
+    deployment.type: "internal"
+    service.type: "database"
+    databases.count: "8"
+    
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+  selector:
+    app: redis
+  # 集群内访问地址: redis-service.db-lianantech-hk-release.svc.cluster.local:6379
+
+---
+# Redis认证信息 - Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-secret
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis
+    type: database-secret
+  annotations:
+    description: "Redis认证信息"
+type: Opaque
+data:
+  # 基础连接信息
+  host: cmVkaXMuZGItbGlhbmFudGVjaC1oay1yZWxlYXNlLnN2Yy5jbHVzdGVyLmxvY2Fs
+  port: NjM3OQ==
+
+  # 认证信息
+  password: I0I3UFRhZ0ExQjYjKnBMQHJ3SiM=
+
+  # 连接字符串
+  connection_string: cmVkaXM6Ly86I0I3UFRhZ0ExQjYjKnBMQHJ3SiNAcmVkaXMuZGItbGlhbmFudGVjaC1oay1yZWxlYXNlLnN2Yy5jbHVzdGVyLmxvY2FsOjYzNzkvMA==
+
+
+---
+# Redis Exporter - 监控指标导出（与 Redis 同文件，作为 Redis 套件的一部分）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis-exporter
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: redis-exporter
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      containers:
+      - name: redis-exporter
+        image: docker.io/oliver006/redis_exporter:v1.67.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: REDIS_ADDR
+          value: "redis://redis-service.db-lianantech-hk-release.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          value: "#B7PTagA1B6#*pL@rwJ#"
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis-exporter
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-exporter
+  ports:
+  - name: metrics
+    port: 9121
+    targetPort: metrics
+    protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-exporter-monitor
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: redis-exporter
+    component: monitoring
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: redis-exporter
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: false

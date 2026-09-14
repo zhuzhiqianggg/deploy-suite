@@ -1,0 +1,196 @@
+# ============================================================================
+# KubeletConfiguration 优化配置
+# ============================================================================
+# 适用版本: Kubernetes v1.29.x / containerd 1.7.x
+# 节点规格: 8C 30-32G 内存
+# 部署方式: sealos (kubeadm)
+#
+# 优化要点（相比默认配置的变更）:
+#   1. evictionHard.memory.available: 100Mi → 1Gi（防止内核 OOM 先杀进程）
+#   2. 新增 evictionSoft + 宽限期（软驱逐缓冲，避免瞬时毛刺误驱逐）
+#   3. 新增 evictionMinimumReclaim（最小回收量，防止驱逐抖动）
+#   4. 新增 mergeDefaultEvictionSettings: true（v1.27+ 关键开关）
+#   5. 新增 systemReserved + kubeReserved（资源预留，保护系统进程）
+#   6. 新增 shutdownGracePeriod（优雅关机，让 Pod 有时间保存状态）
+# ============================================================================
+
+address: 0.0.0.0
+apiVersion: kubelet.config.k8s.io/v1beta1
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 2m0s
+    enabled: true
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 5m0s
+    cacheUnauthorizedTTL: 30s
+cgroupDriver: systemd
+cgroupsPerQOS: true
+clusterDNS:
+- 10.96.0.10
+clusterDomain: cluster.local
+configMapAndSecretChangeDetectionStrategy: Watch
+containerLogMaxFiles: 5
+containerLogMaxSize: 10Mi
+containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+contentType: application/vnd.kubernetes.protobuf
+cpuCFSQuota: true
+cpuCFSQuotaPeriod: 100ms
+cpuManagerPolicy: none
+cpuManagerReconcilePeriod: 10s
+enableControllerAttachDetach: true
+enableDebugFlagsHandler: true
+enableDebuggingHandlers: true
+enableProfilingHandler: true
+enableServer: true
+enableSystemLogHandler: true
+enforceNodeAllocatable:
+- pods
+
+# --- 事件上报限流 ---
+eventBurst: 10
+eventRecordQPS: 5
+
+# ============================================================================
+# 驱逐策略（核心优化项）
+# ============================================================================
+# mergeDefaultEvictionSettings: v1.27+ 关键开关
+#   true  = 只覆盖下面显式写的 eviction 配置，保留 kubelet 内置的磁盘/inode 驱逐规则
+#   false = 完全覆盖全部 eviction 配置，丢失磁盘驱逐，生产风险极高
+#   当前集群 v1.29，必须设为 true
+mergeDefaultEvictionSettings: true
+
+# --- 软驱逐（提前预警，不立即驱逐） ---
+# memory.available < 2Gi 时，节点打上 MemoryPressure=True 污点
+# 普通 Pod 没有容忍该污点，调度器不再调度新 Pod 到此节点
+# 但不会立刻驱逐已运行 Pod，等宽限期过后才驱逐
+# 30GB 节点设置 2Gi 约占 6.7%，合理保守
+evictionSoft:
+  memory.available: "2Gi"
+
+# 软驱逐宽限期：内存持续低于 2Gi 达 1m30s 后才开始驱逐
+# 作用：规避瞬时内存毛刺、业务瞬间冲高误驱逐 Pod
+evictionSoftGracePeriod:
+  memory.available: "1m30s"
+
+# --- 硬驱逐（无宽限期，立即执行） ---
+# 原 evictionHard.memory.available=100Mi 风险极高：
+#   内存几乎耗尽才触发，内核 OOM killer 优先杀进程，节点卡死
+# 改为 1Gi：节点可用内存仅剩 1G 时立刻驱逐 Pod，保护系统不被内核 OOM 干掉
+evictionHard:
+  imagefs.available: 10%
+  memory.available: "1Gi"
+  nodefs.available: 10%
+  nodefs.inodesFree: 5%
+
+# 最小回收量：驱逐动作至少回收 512Mi 内存
+# 防止只驱逐一个小内存 Pod，释放少量内存后短暂高于阈值又触发驱逐，造成驱逐抖动
+evictionMinimumReclaim:
+  memory.available: "512Mi"
+
+# 压力污点冷却时间：节点资源恢复正常后，等待 5 分钟才清除 MemoryPressure 污点
+# 防止内存瞬间恢复，调度器立刻大量调度 Pod 过来，造成内存反复震荡
+evictionPressureTransitionPeriod: 5m0s
+
+# ============================================================================
+# 资源预留（保护系统进程和 k8s 组件）
+# ============================================================================
+# systemReserved: 给操作系统预留资源（systemd、sshd、内核、各类系统守护进程）
+#   30-32G 节点设置 512Mi，仅保障基础系统运行，不抢占业务内存
+#   设置后节点 Allocatable = Capacity - systemReserved - kubeReserved
+systemReserved:
+  memory: "512Mi"
+
+# kubeReserved: 给 k8s 组件预留资源（kubelet、containerd 等消耗）
+kubeReserved:
+  memory: "512Mi"
+
+# ============================================================================
+
+failSwapOn: true
+fileCheckFrequency: 20s
+hairpinMode: promiscuous-bridge
+healthzBindAddress: 0.0.0.0
+healthzPort: 10248
+httpCheckFrequency: 20s
+
+# --- 镜像垃圾回收 ---
+# 磁盘使用率达到 85% 触发镜像 GC，回收到 75% 停止
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 75
+imageMaximumGCAge: 0s
+imageMinimumGCAge: 2m0s
+imageServiceEndpoint: unix:///var/run/image-cri-shim.sock
+iptablesDropBit: 15
+iptablesMasqueradeBit: 14
+kind: KubeletConfiguration
+
+# --- kubelet 与 apiserver 通信限流 ---
+kubeAPIBurst: 10
+kubeAPIQPS: 5
+
+localStorageCapacityIsolation: true
+logging:
+  flushFrequency: 5000000000
+  format: text
+  options:
+    json:
+      infoBufferSize: "0"
+  verbosity: 0
+makeIPTablesUtilChains: true
+maxOpenFiles: 1000000
+maxPods: 110
+memoryManagerPolicy: None
+memorySwap: {}
+memoryThrottlingFactor: 0.9
+
+# --- 节点租约 ---
+# 节点租约有效期 40s，控制节点失联判定
+nodeLeaseDurationSeconds: 40
+nodeStatusMaxImages: 50
+nodeStatusReportFrequency: 10s
+nodeStatusUpdateFrequency: 10s
+
+# kubelet 进程 OOM 优先级，内核尽量不杀 kubelet 本身
+oomScoreAdj: -999
+
+# --- Pod 限制 ---
+podPidsLimit: -1
+port: 10250
+registerNode: true
+registryBurst: 10
+registryPullQPS: 5
+resolvConf: /run/systemd/resolve/resolv.conf
+rotateCertificates: true
+runtimeRequestTimeout: 2m0s
+seccompDefault: false
+serializeImagePulls: true
+
+# --- 优雅关机（新增） ---
+# 节点关机时，kubelet 先通知 Pod 停止，等待宽限期后强制终止
+# shutdownGracePeriod: 普通 Pod 的优雅关机总时间
+# shutdownGracePeriodCriticalPods: 关键 Pod（如 kube-proxy、CoreDNS）的关机时间
+# 注意: 两个值的差值才是普通 Pod 的实际关机时间（30s - 10s = 20s）
+shutdownGracePeriod: 30s
+shutdownGracePeriodCriticalPods: 10s
+
+staticPodPath: /etc/kubernetes/manifests
+streamingConnectionIdleTimeout: 4h0m0s
+syncFrequency: 1m0s
+topologyManagerPolicy: none
+topologyManagerScope: container
+volumePluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+volumeStatsAggPeriod: 1m0s
+
+# --- kubelet 服务端证书 bootstrap ---
+# serverTLSBootstrap: true
+# 注意: 当前集群没有 CSR 自动批准组件，启用后 kubelet 会创建 CSR 但无人批准
+# 如需启用，需要先部署 kubelet-csr-approver 或配置自动批准规则:
+#   kubectl get csr | grep Pending | awk '{print $1}' | xargs kubectl certificate approve
+# 或安装 cert-manager + kubelet-csr-approver
+# 暂不启用，保持默认 false

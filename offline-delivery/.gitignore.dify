@@ -1,0 +1,7 @@
+bundle/*/dify/*.tar.gz
+bundle/*/dify/*.tar.gz.sha256
+bundle/*/dify/*.tmp
+dify/web/node_modules/
+dify/api/.venv/
+dify/.git/
+offline-dify/images/*.tar

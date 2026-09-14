@@ -1,0 +1,134 @@
+# =============================================================================
+# Kubernetes存储资源模板 (StorageClass + PersistentVolume + PersistentVolumeClaim)
+# =============================================================================
+# 文件说明：
+# - 此模板为每个命名空间生成完整的存储资源
+# - 包含StorageClass、PV和PVC的完整配置
+# - 命名规范：{namespace}-pvc
+# - 所有服务通过subPath方式共享此PVC
+# - 创建顺序：StorageClass → PV → PVC
+# =============================================================================
+
+
+# =============================================================================
+# StorageClass: 存储类定义，定义存储的类型和参数
+# =============================================================================
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: db-lianantech-hk-release-storage-class
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+provisioner: kubernetes.io/no-provisioner
+parameters:
+  type: nfs
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+allowVolumeExpansion: True
+---
+
+
+# =============================================================================
+# PersistentVolume: 持久化存储卷，集群级别的存储资源
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: db-lianantech-hk-release-pv
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+spec:
+  capacity:
+    storage: 120Gi
+  accessModes:
+  - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+  - nfsvers=3
+  
+  storageClassName: db-lianantech-hk-release-storage-class
+  
+  
+  nfs:
+    server: 173.23.1.2
+    path: /data/nfs/db-lianantech-hk-release/db-lianantech-hk-release-pvc
+  
+---
+
+
+# =============================================================================
+# PersistentVolumeClaim: 存储卷声明，应用资源的前置依赖
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-lianantech-hk-release-pvc
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 120Gi
+  
+  storageClassName: db-lianantech-hk-release-storage-class
+  
+  
+  volumeName: db-lianantech-hk-release-pv
+  
+
+
+# =============================================================================
+# 配置说明：
+# =============================================================================
+# 必需配置：
+#   namespace: 命名空间名称
+#   product_name: 产品名称
+#
+# 存储总开关：
+#   storage_enabled: 是否启用存储资源 (默认: true)
+#
+# StorageClass配置：
+#   storage_class_enabled: 是否创建StorageClass (默认: true)
+#   storage_class_name: 存储类名称 (默认: {namespace}-storage-class)
+#   storage_provisioner: 存储供应商 (默认: kubernetes.io/no-provisioner)
+#   storage_type: 存储类型 (默认: local)
+#   volume_binding_mode: 卷绑定模式 (默认: WaitForFirstConsumer)
+#   reclaim_policy: 回收策略 (默认: Retain)
+#   allow_volume_expansion: 是否允许卷扩展 (默认: true)
+#
+# PersistentVolume配置：
+#   pv_enabled: 是否创建PV (默认: true)
+#   pv_storage_size: PV存储大小 (默认: 20Gi)
+#   storage_backend: 存储后端类型 (hostpath/nfs，默认: hostpath)
+#   host_path: 主机路径 (默认: /data/k8s-storage/{namespace})
+#   host_path_type: 主机路径类型 (默认: DirectoryOrCreate)
+#   nfs_server: NFS服务器地址 (默认: nfs-server.default.svc.cluster.local)
+#   nfs_path: NFS路径 (默认: /data/{namespace})
+#
+# PersistentVolumeClaim配置：
+#   pvc_storage_size: PVC存储大小 (默认: 10Gi)
+#
+# 命名规范：
+#   StorageClass: {namespace}-storage-class
+#   PersistentVolume: {namespace}-pv
+#   PersistentVolumeClaim: {namespace}-pvc
+#
+# 创建顺序：
+#   1. StorageClass (如果启用)
+#   2. PersistentVolume (如果启用)
+#   3. PersistentVolumeClaim
+# =============================================================================

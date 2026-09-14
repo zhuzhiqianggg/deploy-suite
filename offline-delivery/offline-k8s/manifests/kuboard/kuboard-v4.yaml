@@ -1,0 +1,154 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuboard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kuboard-data
+  namespace: kuboard
+spec:
+  storageClassName: nfs-client
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kuboard-db-init
+  namespace: kuboard
+data:
+  create_db.sql: |
+    CREATE DATABASE IF NOT EXISTS kuboard DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_unicode_ci;
+    CREATE USER IF NOT EXISTS 'kuboard'@'%' IDENTIFIED BY 'Kuboard123';
+    GRANT ALL PRIVILEGES ON kuboard.* TO 'kuboard'@'%';
+    FLUSH PRIVILEGES;
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuboard-db
+  namespace: kuboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuboard-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: kuboard-db
+    spec:
+      containers:
+        - name: mariadb
+          image: swr.cn-east-2.myhuaweicloud.com/kuboard/mariadb:11.3.2-jammy
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              value: Kuboard123
+            - name: MYSQL_ROOT_PASSWORD
+              value: Kuboard123
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command:
+                - healthcheck.sh
+                - --connect
+                - --innodb_initialized
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kuboard-data
+        - name: init-sql
+          configMap:
+            name: kuboard-db-init
+            defaultMode: 0777
+            items:
+              - key: create_db.sql
+                path: create_db.sql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kuboard-db
+  namespace: kuboard
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:
+    app: kuboard-db
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuboard
+  namespace: kuboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuboard
+  template:
+    metadata:
+      labels:
+        app: kuboard
+    spec:
+      containers:
+        - name: kuboard
+          image: swr.cn-east-2.myhuaweicloud.com/kuboard/kuboard:v4
+          env:
+            - name: DB_DRIVER
+              value: org.mariadb.jdbc.Driver
+            - name: DB_URL
+              value: jdbc:mariadb://kuboard-db:3306/kuboard?serverTimezone=Asia/Shanghai
+            - name: DB_USERNAME
+              value: kuboard
+            - name: DB_PASSWORD
+              value: Kuboard123
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kuboard
+  namespace: kuboard
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      nodePort: 30080
+      targetPort: 80
+  selector:
+    app: kuboard

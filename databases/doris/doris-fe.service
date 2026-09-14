@@ -1,0 +1,37 @@
+[Unit]
+Description=Doris FE Service
+Documentation=https://doris.apache.org/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+Environment=JAVA_HOME=/data/jdk-17.0.20.1/
+WorkingDirectory=/data/doris/fe
+# 平时不要加 --helper；仅首次启动或本地 bdbje 损坏时使用（元数据修复流程见运维文档）
+ExecStart=/bin/bash /data/doris/fe/bin/start_fe.sh --daemon
+# --grace 用 SIGTERM 优雅退出（stop_fe.sh 默认是 SIGKILL）
+ExecStop=/bin/bash /data/doris/fe/bin/stop_fe.sh --grace
+# start_fe.sh --daemon fork java 后脚本即退出，必须 Type=forking + PIDFile 跟踪主进程
+# 注意：pid 文件由 start_fe.sh 写在 bin 目录（stop_fe.sh 同路径），不是 pid/ 目录
+PIDFile=/data/doris/fe/bin/fe.pid
+KillMode=control-group
+TimeoutStartSec=120
+TimeoutStopSec=120
+Restart=always
+RestartSec=10s
+# 内存围栏：按 fe.conf JAVA_OPTS_FOR_JDK_17 实际堆 -Xmx8192m 预留（8G 堆 + 堆外/metadb/JVM 开销 ~8G）
+# 若调大 fe.conf 堆，需同步上调此处
+MemoryHigh=12G
+MemoryMax=16G
+MemorySwapMax=0
+# FE 运行日志由 Doris 自管（/data/doris/fe/log/），启动输出进 journald（journalctl -u doris-fe）
+LimitNOFILE=1048576
+LimitNPROC=1000000
+LimitCORE=infinity
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

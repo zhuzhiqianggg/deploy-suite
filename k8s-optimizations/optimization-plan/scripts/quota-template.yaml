@@ -1,0 +1,89 @@
+# ============================================================================
+# quota-template.yaml — ResourceQuota + LimitRange ns 级模板（三档）
+# ============================================================================
+# 用法:
+#   sed 's/<NAMESPACE>/目标ns/' quota-template.yaml | kubectl apply -f -
+#   （默认启用 medium 档；small/large 按需取消注释、注释掉其他档）
+# 关联: optimization-plan/06-resource-quota-limitrange.md
+# 定档依据: 单 worker 8C/30G；large 档 requests 上限保证单 ns 至多占满 2 个节点
+# 注意:
+#   - 系统命名空间（kube-* / calico-* 等）禁止使用本模板
+#   - Quota 生效后该 ns 新建 Pod 必须显式声明 requests/limits
+#   - USE 接近 LIMIT（差<20%）时提前升档，避免发版被拒
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 档位一：small（前端/轻量工具类 ns）
+# ----------------------------------------------------------------------------
+#apiVersion: v1
+#kind: ResourceQuota
+#metadata:
+#  name: small-quota
+#  namespace: <NAMESPACE>
+#spec:
+#  hard:
+#    requests.cpu: "4"          # ns 内所有 Pod requests.cpu 总和上限（保证调度确定性）
+#    requests.memory: 8Gi       # requests.memory 总和上限（防止过度承诺导致节点超卖）
+#    limits.cpu: "8"            # limits 总和上限（防 CPU 突发挤占）
+#    limits.memory: 16Gi        # limits.memory 总和上限（防内存超卖触发 OOM 连坐）
+#    pods: "30"                 # Pod 计数上限（防 replicas 配错风暴，如误配 1000 副本）
+#---
+# ----------------------------------------------------------------------------
+# 档位二：medium（常规后端/中间件 ns）—— 默认启用
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: medium-quota
+  namespace: <NAMESPACE>
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"
+# ---
+# ----------------------------------------------------------------------------
+# 档位三：large（DB/ES/大数据类 ns）
+# ----------------------------------------------------------------------------
+#apiVersion: v1
+#kind: ResourceQuota
+#metadata:
+#  name: large-quota
+#  namespace: <NAMESPACE>
+#spec:
+#  hard:
+#    requests.cpu: "16"
+#    requests.memory: 32Gi
+#    limits.cpu: "24"
+#    limits.memory: 48Gi
+#    pods: "80"
+---
+# ============================================================================
+# LimitRange — 默认资源兜底
+# ============================================================================
+# 原理: 给"未声明 requests/limits 的容器"自动注入默认值。
+# 边界: ns 同时存在 Quota 时，Quota 优先（未声明字段的 Pod 直接被拒），
+#       本兜底主要服务"将来可能移除 Quota"或"新 ns 未铺 Quota 的窗口期"。
+# ============================================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: <NAMESPACE>
+spec:
+  limits:
+  - type: Container
+    default:            # 未声明 limits 时的默认上限
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:     # 未声明 requests 时的默认请求量
+      cpu: 100m
+      memory: 128Mi
+    max:                # 单容器上限（防个别容器配出天文数字）
+      cpu: "4"
+      memory: 8Gi
+    min:                # 单容器下限（防 0 值导致调度异常）
+      cpu: 50m
+      memory: 64Mi

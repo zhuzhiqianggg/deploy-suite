@@ -1,0 +1,19 @@
+# kube-prometheus-stack 90.0.0 全量镜像清单（helm template 渲染提取，arm64 已逐一验证）
+# 用途：交给 images-manager.sh sync 通道在海外服务器同步 → SWR → load2k8s 打回官方名注入
+# 共 8 个镜像，全部支持 arm64：
+#   - quay.io / registry.k8s.io 均为官方多架构 manifest list（已验证）
+#   - docker.io/grafana 经镜像源 manifest list 确认含 arm64
+#   - registry.k8s.io 镜像按 K8s 发布策略必然含 arm64
+# 注：certgen（registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.5.1）不在本清单——
+#     它是集群级公共镜像，归 images-manager.sh「K8s 基础组件」分组统一维护
+#     （ingress-nginx 06 与本套件 10 的 admission webhook 共用；chart 默认的
+#     ghcr.io/jkroepke/kube-webhook-certgen:1.8.8 不再使用，ghcr 无加速通道且
+#     v1.5.1 create/patch 参数与默认证书密钥名 cert/key 全兼容，实测等价）
+quay.io/prometheus-operator/prometheus-operator:v0.93.1
+quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1
+quay.io/prometheus/prometheus:v3.14.0-distroless
+quay.io/prometheus/alertmanager:v0.34.0
+quay.io/prometheus/node-exporter:v1.12.1-distroless
+quay.io/kiwigrid/k8s-sidecar:2.11.2
+registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+docker.io/grafana/grafana:13.2.1-distroless

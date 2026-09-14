@@ -1,0 +1,46 @@
+# Docker 镜像 tar 包
+*.tar
+*.tar.gz
+*.tgz
+
+# 二进制文件
+offline-docker/bin/
+offline-docker/pkgs/
+offline-docker/bundle/
+
+# 镜像目录
+offline-database/images/
+offline-k8s/images/
+
+# 打包输出
+offline-database/bundle/
+offline-k8s/bundle/
+offline-k8s/build/etcd-host/bin/
+offline-k8s/build/etcd-host-arm64/bin/
+
+# 离线包二进制
+offline-k8s/bin/
+offline-k8s/pkgs/
+
+# 密码文件（含敏感信息）
+.password
+
+# kuboard bundle
+offline-kuboard/bundle/
+
+# 临时/日志/构建目录
+offline-k8s/tmp/
+offline-k8s/logs/
+offline-k8s/build/etcd-host/bin/
+offline-k8s/build/etcd-host-arm64/bin/
+offline-docker/tmp/
+offline-database/tmp/
+
+# 全局 bundle 输出（按架构+类型分目录的离线包产物，已被 *.tar.gz 规则覆盖，
+# 此处显式忽略以避免误添加任何配置/历史残留）
+/bundle/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo

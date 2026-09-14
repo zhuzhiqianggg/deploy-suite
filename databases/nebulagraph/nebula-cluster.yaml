@@ -1,0 +1,449 @@
+# ============================================================================
+# NebulaGraph v3.8.0 — 单机模式 (1 metad + 1 storaged + 1 graphd, 单服务器效率最优)
+# 官方镜像: vesoft/nebula-{metad,storaged,graphd}:v3.8.0 (+ console v3.8 / studio v3.10)
+# 说明:
+#   - metad/storaged 用 StatefulSet ×1, graphd Deployment ×1 (集群版 3+3+2 归档于 databases/nebulagraph/manifests/30-nebula-cluster.yaml)
+#   - 部署后由 nebula-add-hosts Job 自动注册 storaged-0 (幂等, 含重试)
+#   - --local_ip=$(hostname).<headless>.<ns>.svc.cluster.local: 官方 chart 同款,
+#     storaged 身份即该 FQDN, ADD HOSTS 必须用完全一致的字符串注册
+#   - 部署后由 nebula-add-hosts Job 自动注册 3 个 storaged (幂等, 含重试)
+#   - 内存限制: 每个 nebulad 节点 limit 64Gi (用户定调 64G 内)
+# 服务命名与本 ns 统一: xxx-headless / xxx-service (标准名承载 NodePort, 禁用 external 后缀)
+# 对外 NodePort: nebula-service 30669(thrift)/31669(http), studio 30800
+# 默认账号: root / nebula (未开启认证, enable_authorize=false)
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebula-metad-headless
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-metad
+    type: database-headless
+spec:
+  publishNotReadyAddresses: true
+  clusterIP: None
+  selector:
+    app: nebula-metad
+  ports:
+  - name: thrift
+    port: 9559
+  - name: raft
+    port: 9560
+  - name: http
+    port: 19559
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nebula-metad
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-metad
+    type: database
+    deployment-mode: internal
+spec:
+  serviceName: nebula-metad-headless
+  podManagementPolicy: Parallel
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebula-metad
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: nebula-metad
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: metad
+        image: docker.io/vesoft/nebula-metad:v3.8.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9559
+          name: thrift
+        - containerPort: 9560
+          name: raft
+        - containerPort: 19559
+          name: http
+        command:
+        - sh
+        - -c
+        - exec /usr/local/nebula/bin/nebula-metad --flagfile /usr/local/nebula/etc/nebula-metad.conf --daemonize=false --local_ip $(hostname).nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local --meta_server_addrs nebula-metad-0.nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local:9559
+        volumeMounts:
+        - name: data
+          mountPath: /usr/local/nebula/data
+        - name: logs
+          mountPath: /usr/local/nebula/logs
+        readinessProbe:
+          tcpSocket:
+            port: 9559
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 9559
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: "1"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 6Gi
+      volumes:
+      - name: logs
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: nfs-client
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebula-storaged-headless
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-storaged
+    type: database-headless
+spec:
+  publishNotReadyAddresses: true
+  clusterIP: None
+  selector:
+    app: nebula-storaged
+  ports:
+  - name: thrift
+    port: 9779
+  - name: raft
+    port: 9780
+  - name: http
+    port: 19779
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nebula-storaged
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-storaged
+    type: database
+    deployment-mode: internal
+spec:
+  serviceName: nebula-storaged-headless
+  podManagementPolicy: Parallel
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebula-storaged
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: nebula-storaged
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: storaged
+        image: docker.io/vesoft/nebula-storaged:v3.8.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9779
+          name: thrift
+        - containerPort: 9780
+          name: raft
+        - containerPort: 19779
+          name: http
+        command:
+        - sh
+        - -c
+        - exec /usr/local/nebula/bin/nebula-storaged --flagfile /usr/local/nebula/etc/nebula-storaged.conf --daemonize=false --local_ip $(hostname).nebula-storaged-headless.db-lianantech-hk-release.svc.cluster.local --meta_server_addrs nebula-metad-0.nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local:9559
+        volumeMounts:
+        - name: data
+          mountPath: /usr/local/nebula/data
+        - name: logs
+          mountPath: /usr/local/nebula/logs
+        readinessProbe:
+          tcpSocket:
+            port: 9779
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 18
+        livenessProbe:
+          tcpSocket:
+            port: 9779
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: "1"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 100Gi
+      volumes:
+      - name: logs
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: nfs-client
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebula-graphd
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-graphd
+    type: database
+    deployment-mode: internal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebula-graphd
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: nebula-graphd
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: graphd
+        image: docker.io/vesoft/nebula-graphd:v3.8.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9669
+          name: thrift
+        - containerPort: 19669
+          name: http
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        command:
+        - sh
+        - -c
+        - exec /usr/local/nebula/bin/nebula-graphd --flagfile /usr/local/nebula/etc/nebula-graphd.conf --daemonize=false --local_ip $POD_IP --meta_server_addrs nebula-metad-0.nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local:9559
+        readinessProbe:
+          tcpSocket:
+            port: 9669
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 9669
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: 500m
+            memory: 4Gi
+          limits:
+            cpu: "8"
+            memory: 16Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebula-studio
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-studio
+    type: database
+    deployment-mode: internal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebula-studio
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: nebula-studio
+    spec:
+      containers:
+      - name: studio
+        image: docker.io/vesoft/nebula-graph-studio:v3.10
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 7001
+          name: http
+        env:
+        - name: TZ
+          value: "Asia/Shanghai"
+        readinessProbe:
+          tcpSocket:
+            port: 7001
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebula-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-graphd
+    type: database-service
+  annotations:
+    description: "NebulaGraph 服务 (thrift 9669, NodePort 30669; http 19669, NodePort 31669)"
+spec:
+  type: NodePort
+  selector:
+    app: nebula-graphd
+  ports:
+  - name: thrift
+    port: 9669
+    targetPort: 9669
+    nodePort: 30669
+    protocol: TCP
+  - name: http
+    port: 19669
+    targetPort: 19669
+    nodePort: 31669
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebula-studio-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-studio
+    type: database-service
+  annotations:
+    description: "NebulaGraph Studio Web UI (登录 173.23.1.2:30800, root/nebula)"
+spec:
+  type: NodePort
+  selector:
+    app: nebula-studio
+  ports:
+  - name: http
+    port: 7001
+    targetPort: 7001
+    nodePort: 30800
+    protocol: TCP
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nebula-add-hosts
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: nebula-add-hosts
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: nebula-add-hosts
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: add-hosts
+        image: docker.io/vesoft/nebula-console:v3.8
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          CONSOLE="/usr/local/bin/nebula-console -addr nebula-service -port 9669 -u root -p nebula"
+          for i in $(seq 1 60); do
+            # 已注册 → 直接结束
+            if $CONSOLE -e 'SHOW HOSTS' 2>/dev/null | grep -q 'nebula-storaged-0'; then
+              echo "storaged hosts already registered"
+              break
+            fi
+            # graphd 未就绪/未注册 → 执行注册
+            if $CONSOLE -e 'ADD HOSTS "nebula-storaged-0.nebula-storaged-headless.db-lianantech-hk-release.svc.cluster.local":9779'; then
+              echo "ADD HOSTS OK"
+              break
+            fi
+            echo "retry ${i}/60 ..."
+            sleep 10
+          done
+          $CONSOLE -e 'SHOW HOSTS' 

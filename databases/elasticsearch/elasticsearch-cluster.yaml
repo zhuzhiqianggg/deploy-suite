@@ -1,0 +1,454 @@
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-transport-tls
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVGekNDQXYrZ0F3SUJBZ0lVV1FGb2V2T01pNVF1VVNHdXZnNnRrNEZyVk5Vd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2N6RUxNQWtHQTFVRUJoTUNRMDR4RURBT0JnTlZCQWdNQjBKbGFXcHBibWN4RURBT0JnTlZCQWNNQjBKbAphV3BwYm1jeEdUQVhCZ05WQkFvTUVFUmxjR3h2ZVcxbGJuUlRlWE4wWlcweEVUQVBCZ05WQkFzTUNGQnNZWFJtCmIzSnRNUkl3RUFZRFZRUUREQWxzYjJOaGJHaHZjM1F3SGhjTk1qWXdPVEV4TURVMU1UVXpXaGNOTXpZd09UQTQKTURVMU1UVXpXakJ6TVFzd0NRWURWUVFHRXdKRFRqRVFNQTRHQTFVRUNBd0hRbVZwYW1sdVp6RVFNQTRHQTFVRQpCd3dIUW1WcGFtbHVaekVaTUJjR0ExVUVDZ3dRUkdWd2JHOTViV1Z1ZEZONWMzUmxiVEVSTUE4R0ExVUVDd3dJClVHeGhkR1p2Y20weEVqQVFCZ05WQkFNTUNXeHZZMkZzYUc5emREQ0NBU0l3RFFZSktvWklodmNOQVFFQkJRQUQKZ2dFUEFEQ0NBUW9DZ2dFQkFMSFBGcnpMd0FpNk1zalRXUWI2R2w0ODE2OVpodHFOOWdVdmxDSng2eTg2b3JVaQpVVERDMnVVQTRIMWJOUTMwbStzZStMc0MvT21KcVpZZmxkanczSTArV3lhWlRIbWI5YUFTWjNXV3RVS1grSDk3Cmd0U09QcU1kN3pjOStHWEVFNVVSMkh5aGlkQWxUcm4yWkhWWUYraENiZlU1L1NoVTBYZXlwbjUzV1NqenNJdlYKQ2JJMTF1SExIaE5DbHo3QklYRlRyZkZtdlYzUDhxK2cwSWVEREhpdlhVZEJKS1gvdXl3U2VkcGQ4eDFiTXF3VwpuR3Z4VlVENnI2QjRZb0UzMCtaa1VubFJsbGVuN1Q1RzZtdVZsR0EydGxBckFoSFNjdUlMUFR4d0hFcVlKY3g0CmU5SHdndytpWW83UUVEQmtoeGhGSEZOMjc1UDdTek1vamNJY3JwRUNBd0VBQWFPQm9qQ0JuekFKQmdOVkhSTUUKQWpBQU1Bc0dBMVVkRHdRRUF3SUY0REJtQmdOVkhSRUVYekJkZ2dsc2IyTmhiR2h2YzNTQ0RXVnNZWE4wYVdOegpaV0Z5WTJpQ1FXVnNZWE4wYVdOelpXRnlZMmd0YUdWaFpHeGxjM011WkdJdGJHbGhibUZ1ZEdWamFDMW9heTF5ClpXeGxZWE5sTG5OMll5NWpiSFZ6ZEdWeUxteHZZMkZzTUIwR0ExVWREZ1FXQkJUZDFVYzRwK1VGek0rT0M3WTQKaHBvQjdKWjhLVEFOQmdrcWhraUc5dzBCQVFzRkFBT0NBUUVBSDdFQWlHZ0EzUlVWOTZhQTdRVE5VdDRwYmd6Zgp5eFpBanEyUU5kQ1duS1F0WlZhUkJ5SnRiR1VRUjVibVcwNUtpZFB6NUROZDBQQWtMSWxUdWZ2a0NLcG9XbFB6ClZ0b2JCTG80SDl0KytFZWt6VXlyQkhtZ1g1eHRMRGUwZU0rRndFeFd4UFlLTENhT1NNTzk4UmhxRjNNWW5BOEwKb2w2SVBFc2tiaEN3ZEFTMjFYaG9QSHBCYTdjdks4Nmh2YkhaL2drM283VVZoWkNJL21jK3p0YStjRFJ0T2hScQpkeHBtdUY3by9ZMWQ3cEdRSVMra2tlUXVrbHFsRmdDQys0WmJ6Nm1VbXQ1L3pqM1g0dzdmUEoyUHIzL2NPTGpyCkkwcllRQ01MOFpuZG9qZDlTT0U4alMrdmEza1pNcmhUOVZ5Q2N3QzlKbWRxWWxERTcvTGpGa09YdHc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRQ3h6eGE4eThBSXVqTEkKMDFrRytocGVQTmV2V1liYWpmWUZMNVFpY2Vzdk9xSzFJbEV3d3RybEFPQjlXelVOOUp2ckh2aTdBdnpwaWFtVwpINVhZOE55TlBsc21tVXg1bS9XZ0VtZDFsclZDbC9oL2U0TFVqajZqSGU4M1BmaGx4Qk9WRWRoOG9ZblFKVTY1CjltUjFXQmZvUW0zMU9mMG9WTkYzc3FaK2Qxa284N0NMMVFteU5kYmh5eDRUUXBjK3dTRnhVNjN4WnIxZHovS3YKb05DSGd3eDRyMTFIUVNTbC83c3NFbm5hWGZNZFd6S3NGcHhyOFZWQStxK2dlR0tCTjlQbVpGSjVVWlpYcCswKwpSdXBybFpSZ05yWlFLd0lSMG5MaUN6MDhjQnhLbUNYTWVIdlI4SU1Qb21LTzBCQXdaSWNZUlJ4VGR1K1QrMHN6CktJM0NISzZSQWdNQkFBRUNnZ0VBVXRhRXBOT1Y5VnJ1RXdMbjdLaXpoU2o2WVQ2bjVZV1MweXF0N0hnL1ZpTU8KcjYyN3ZxaGhPNlJ6Y2VOK3JiQkN2Y0VScDJyR2NuVUl0YUNrZXN3SUxLT2E2cm9yMTFJeUZtL01sSXR3aWdScwpLTlJkaVBKMk94OVVsZHVBc01TdlRObGlEdnBoVHNBNjA4ZDNXUFlBT1Z4Tmh4eUxsWEVpbjQzekpHTXMvamIyCm5qRDlqYitFanFocGJVekxBcmNkT3Z4Zm9ZLy9uWVNGZ1JQclpVZzdaUGJYWXBMNllYMDFibm9ubkVxN0p5QVUKWVNzTU5NbkhONElVemM1ekFwWWxHaHlXTWpDYVVyWXFvd2pvdHdwdG5YaGlzTXhlNjMyaW80amVlUkZoYnhBOQpycSs0cnlvcEdodHVrTDN2bS9xN0hHTCt2TDRwSUVWSHAxQ1F2QkdPQXdLQmdRRG5OMzdmV2syOWptRVdjSUc3CkFnSmJXcm9mK2VjMFR5NnF5K2p2d1phZG9vUGNnVkFOMWIrOUUwMTNhaTB4ZTJ0cmxEMzdNWm1XRXVxQVg0amwKV240RndZQk5SakpYTlIzTnRsRU1acFA0MnAwaHBjcXJtbWVDRzYvMlp3MldySFQwQ1RMMEZvVnNiY3JDMnAxTwpVcXRDRmR3YUhRNEcxYytTQmlVSTBTV3hOd0tCZ1FERTNobjk3czVreHN3LzJ6WjV2Nk9QOCs3bVJNNXovSnM2CkhmeXZpclBsRFdXUEFiSHlIV0RaRWJlc1dMZ25jVkpBODVhSUZZb0I5L0ZpdXpWM3J5eUtuZ2hlWjRPc0Jack4KSFNkcTZMaE4vS3NYSmR6alJ1MytWZGxWWVpWY2hHLy9wUjRXSEVLOFdIY0lhWkZZRzl2RFB0NjN2REswVStLbgpLa1VxVjJJaWR3S0JnUUM0U1hBeS8xdlZDTVZ6U0NydWJiU0pNYkFGeW40d0lDaDI4MTF1c3lLajg2TWJ2bW1iCkRWSHNscFQ0NThTcm1zNU1pWFE1WVJna0dHR1YvZzh6bHNPNVBMaFJYdkRDdDFCUTVNNkdqci9ENmlLeGJkNHkKbGplSDZSOS95alYzY1c4cURxYnhDMzQrcE9lbUZPNnFQWlBJY1huanltS2lxZ251UGoySVlJS2xVd0tCZ0doZQpOdmxnZVJzRUtaUlE2dmh3bUkzZ2pHNlhXN3d4MXpsZ1hHM1Q0cnN6OXZ0eHNwemc1azh1RFduWlB3ZnFFK2xMCk9pcTdBSWM2bzBYc2FkUWhra09LdEhVWCs3NWUya3FUZ2lvelprSXlDYUlqK0k2bE05YjZQRlgvZmVlbWJwbmgKTjZvUklYQW9sakpuaFI1bzVvRUQrNTc4cndUYTAvWTdlcCtQNC83UkFvR0JBSi8wYnBuenpGZ2dMbUNEU3BMUAp5ZkZPa0lsOHZwaVR4MWtHN0ZEKzRMK0dIUzE3OHVQUEYzMG53TEFvRkFMd1pvYXp1VnB1YXdvWVJtZGtOSGtqCmNxVlVzMUl1bEp3Q0QzaDNOUDJLUC8wejA0YmdLREYwNkFzUVFaTmtlb2o4dndCdUYyU3F0a0IweG5VNGluVkcKeTdFMHNuRkswU2VxOWM2YVFLZUpBdU81Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-secret
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch
+type: Opaque
+stringData:
+  username: "elastic"
+  password: "S0CDdiK2lIYixrrAUH7C"
+  kibana_username: "elastic"
+  kibana_password: "S0CDdiK2lIYixrrAUH7C"
+  host: "elasticsearch-service.db-lianantech-hk-release.svc.cluster.local"
+  port: "9200"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-headless
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+  ports:
+  - name: http
+    port: 9200
+    targetPort: http
+    protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch
+  annotations:
+    description: "Elasticsearch搜索引擎服务"
+spec:
+  serviceName: elasticsearch-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: elasticsearch
+    spec:
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: init-permissions
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /usr/share/elasticsearch/data
+          chown -R 1000:1000 /usr/share/elasticsearch/data
+          chmod -R 755 /usr/share/elasticsearch/data
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: elasticsearch-data
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
+        # 用 ES_SETTING_ 前缀环境变量传 -E 参数（ES 7.x docker 镜像支持）。
+        # 必须用 eswrapper 作为 args[0]，docker-entrypoint.sh 才会处理 ELASTIC_PASSWORD（写入 keystore）。
+        # setting 名中的下划线用双下划线 __ 转义（如 self_generated → SELF__GENERATED）。
+        env:
+        - name: ES_JAVA_OPTS
+          value: "-Xms31g -Xmx31g"
+        - name: ELASTIC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-secret
+              key: username
+        # ELASTIC_PASSWORD：首次启动时，docker-entrypoint.sh 会把它写入 elasticsearch.keystore 的
+        # bootstrap.password，ES 启动后用该值初始化 elastic 用户密码。
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-secret
+              key: password
+        - name: ELASTICSEARCH_HOST
+          value: "localhost"
+        - name: ELASTICSEARCH_PORT
+          value: "9200"
+        - name: ES_SETTING_CLUSTER_NAME
+          value: "es-cluster"
+        - name: ES_SETTING_DISCOVERY_SEED__HOSTS
+          value: "elasticsearch-0.elasticsearch-headless.db-lianantech-hk-release.svc.cluster.local,elasticsearch-1.elasticsearch-headless.db-lianantech-hk-release.svc.cluster.local,elasticsearch-2.elasticsearch-headless.db-lianantech-hk-release.svc.cluster.local"
+        - name: ES_SETTING_CLUSTER_INITIAL__MASTER__NODES
+          value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
+        - name: ES_SETTING_XPACK_SECURITY_ENABLED
+          value: "true"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_ENABLED
+          value: "true"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_VERIFICATION__MODE
+          value: "certificate"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_CLIENT__AUTHENTICATION
+          value: "required"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_KEY
+          value: "/usr/share/elasticsearch/config/transport-certs/tls.key"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_CERTIFICATE
+          value: "/usr/share/elasticsearch/config/transport-certs/tls.crt"
+        - name: ES_SETTING_XPACK_SECURITY_TRANSPORT_SSL_CERTIFICATE__AUTHORITIES
+          value: "/usr/share/elasticsearch/config/transport-certs/tls.crt"
+        # 强制 trial license：basic license 不会在首次启动时自动应用 ELASTIC_PASSWORD 初始化 elastic 用户密码
+        - name: ES_SETTING_XPACK_LICENSE_SELF__GENERATED_TYPE
+          value: "trial"
+        - name: ES_SETTING_NETWORK_HOST
+          value: "0.0.0.0"
+        args:
+        - "eswrapper"
+        ports:
+        - name: http
+          containerPort: 9200
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 2000m
+            memory: 64Gi
+          limits:
+            cpu: 8000m
+            memory: 64Gi
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        volumeMounts:
+        - name: elasticsearch-data
+          mountPath: /usr/share/elasticsearch/data
+        
+        - name: elasticsearch-transport-certs
+          mountPath: /usr/share/elasticsearch/config/transport-certs
+          readOnly: true
+        
+      volumes:
+      
+      - name: elasticsearch-transport-certs
+        secret:
+          secretName: elasticsearch-transport-tls
+      
+  volumeClaimTemplates:
+  - metadata:
+      name: elasticsearch-data
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: elasticsearch
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 100Gi
+      storageClassName: nfs-client
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch
+spec:
+  type: NodePort
+  selector:
+    app: elasticsearch
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: api
+    port: 9200
+    targetPort: http
+    nodePort: 30464
+    protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: kibana
+    spec:
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:7.17.29
+        ports:
+        - name: http
+          containerPort: 5601
+          protocol: TCP
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "https://elasticsearch-service.db-lianantech-hk-release.svc.cluster.local:9200"
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-secret
+              key: kibana_username
+        # Kibana 7.17 的密码环境变量是 ELASTICSEARCH_PASSWORD（不是 ELASTIC_PASSWORD，
+        # ELASTIC_PASSWORD 是 Elasticsearch 镜像的变量，Kibana 不会读它）。
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-secret
+              key: kibana_password
+        - name: XPACK_SECURITY_ENABLED
+          value: "true"
+        
+        - name: ELASTICSEARCH_SSL_VERIFICATIONMODE
+          value: "none"
+        
+        - name: ELASTICSEARCH_REQUESTTIMEOUT
+          value: "300000"
+        - name: ELASTICSEARCH_SHARDTIMEOUT
+          value: "120000"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 90
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 45
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kibana
+spec:
+  type: NodePort
+  selector:
+    app: kibana
+  ports:
+  - name: http
+    port: 5601
+    targetPort: http
+    protocol: TCP
+    
+
+
+---
+# Elasticsearch Exporter - 监控指标导出（与 ES/Kibana 同文件）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch-exporter
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch-exporter
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: elasticsearch-exporter
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9114"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      containers:
+      - name: elasticsearch-exporter
+        image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.7.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--es.uri=http://elastic:S0CDdiK2lIYixrrAUH7C@elasticsearch-service.db-lianantech-hk-release.svc.cluster.local:9200"
+        - "--es.all"
+        - "--es.indices"
+        - "--es.indices_settings"
+        - "--es.shards"
+        ports:
+        - name: metrics
+          containerPort: 9114
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-exporter-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch-exporter
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch-exporter
+  ports:
+  - name: metrics
+    port: 9114
+    targetPort: metrics
+    protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: elasticsearch-exporter-monitor
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: elasticsearch-exporter
+    component: monitoring
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: false

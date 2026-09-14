@@ -1,0 +1,577 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+---
+# ───────────────────────── IngressClass（ingressClassName: nginx）────────────
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"   # 未指定 className 的 Ingress 默认走本 controller
+spec:
+  controller: k8s.io/ingress-nginx
+---
+# ───────────────────────── ServiceAccount / RBAC ─────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+- apiGroups: [""]
+  resources: ["configmaps","endpoints","nodes","pods","secrets","namespaces"]
+  verbs: ["get","list","watch"]   # get: controller 启动时需 GET 自身 Pod
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["list","watch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["events"]
+  verbs: ["create","patch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses/status"]
+  verbs: ["update"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingressclasses"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["get","list","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-nginx
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["ingress-controller-leader"]
+  verbs: ["get","update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get","create","update"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create","patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get","list","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ingress-nginx
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: ingress-controller-leader
+  namespace: ingress-nginx
+---
+# ─────────────── 优化版主配置（JSON 日志/安全/性能，源自 k8s-configs）─────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+data:
+  # ============================== 日志 ==============================
+  # 容器内 /var/log/nginx/access.log → /dev/stdout 符号链接，kubectl logs / Fluent Bit 直接可读
+  access-log-path: /var/log/nginx/access.log
+  error-log-path: /var/log/nginx/error.log
+  # 默认后端(未匹配 ingress 的 404)也记访问日志 —— 排查扫描/探测、核对 ELB 健康检查流量
+  enable-access-log-for-default-backend: "true"
+  # JSON 日志必须开启：特殊字符自动转义，否则一行日志破坏整个 JSON
+  log-format-escape-json: "true"
+  # JSON 访问日志 23 字段: uri=改写后路径 / request_uri=原始URI /
+  # remote_addr=realip 还原后的用户真实 IP / request_id=请求唯一 ID（串联日志）/
+  # upstream_*=后端耗时定位慢接口 / ssl_protocol 空=HTTP 明文
+  log-format-upstream: '{"time_iso8601":"$time_iso8601","request_id":"$req_id","remote_addr":"$remote_addr","realip_remote_addr":"$realip_remote_addr","http_x_forwarded_for":"$http_x_forwarded_for","request_method":"$request_method","host":"$host","uri":"$uri","request_uri":"$request_uri","scheme":"$scheme","status":"$status","body_bytes_sent":"$body_bytes_sent","bytes_sent":"$bytes_sent","http_user_agent":"$http_user_agent","request_length":"$request_length","request_time":"$request_time","upstream_addr":"$upstream_addr","upstream_status":"$upstream_status","upstream_connect_time":"$upstream_connect_time","upstream_header_time":"$upstream_header_time","upstream_response_time":"$upstream_response_time","upstream_response_length":"$upstream_response_length","ssl_protocol":"$ssl_protocol"}'
+
+  # ============================== 安全响应头 ==============================
+  # 全局注入 custom-headers CM 中的 HSTS/X-Frame-Options 等响应头
+  add-headers: ingress-nginx/custom-headers
+  # 隐藏上游响应的 Server/X-Powered-By，防后端框架指纹泄露
+  hide-headers: Server,X-Powered-By
+  # 隐藏 nginx 自身错误页版本号
+  server-tokens: "false"
+  # 业务 ingress 使用 configuration-snippet 注解时必须为 true
+  allow-snippet-annotations: "true"
+
+  # ============================== 真实 IP ==============================
+  enable-real-ip: "true"
+  real-ip-header: X-Forwarded-For
+  # 只信任内网代理段（华为云 ELB 100.125.x.x 被 100.0.0.0/8 覆盖），防客户端伪造 IP
+  proxy-real-ip-cidr: 192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.0.0.0/8
+  forwarded-for-header: X-Forwarded-For
+  use-forwarded-headers: "true"
+
+  # ============================== 压缩 ==============================
+  use-gzip: "true"
+  gzip-level: "6"
+  # <1KB 响应压缩收益为负
+  gzip-min-length: "1024"
+  gzip-types: application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/javascript text/plain text/x-component
+  # brotli 压缩率比 gzip 高 15-20%；必须显式设置 brotli-types，否则 JSON/JS/CSS 漏压缩
+  enable-brotli: "true"
+  brotli-level: "4"
+  brotli-types: application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/javascript text/plain text/x-component
+
+  # ============================== 客户端请求限制 ==============================
+  client-body-buffer-size: 128k
+  # 60s 读超时防 slowloris 慢速连接攻击
+  client-body-timeout: "60"
+  client-header-timeout: "60"
+  # 大 header（长 JWT/大 Cookie）4x16k；超出 400/414 防恶意大头部
+  large-client-header-buffers: 4 16k
+  # 上传上限 50m，超出 413
+  proxy-body-size: 50m
+
+  # ============================== 上游(后端)转发 ==============================
+  proxy-connect-timeout: "60"
+  proxy-read-timeout: "60"
+  proxy-send-timeout: "60"
+  # 限定重试条件 + tries=3 + 10s 总窗口，防后端全挂时重试风暴
+  proxy-next-upstream: "error timeout http_502 http_503 http_504"
+  proxy-next-upstream-tries: "3"
+  proxy-next-upstream-timeout: "10"
+  proxy-buffer-size: 16k
+  proxy-buffers-number: "8"
+
+  # ============================== keepalive ==============================
+  keepalive-requests: "100"
+  keepalive-timeout: "75"
+  # 到后端 Pod 的 keepalive 连接池，大幅降延迟
+  upstream-keepalive-connections: "32"
+  upstream-keepalive-timeout: "60"
+
+  # ============================== TLS ==============================
+  ssl-protocols: TLSv1.2 TLSv1.3
+  ssl-ciphers: ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+  ssl-prefer-server-ciphers: "true"
+  ssl-session-cache: "true"
+  ssl-session-cache-size: 10m
+  ssl-session-timeout: 10m
+  # 禁用会话票据（前向保密弱点），已有 session-cache 满足复用
+  ssl-session-tickets: "false"
+
+  # ============================== worker/性能 ==============================
+  worker-processes: auto
+  worker-connections: "65535"
+  max-worker-open-files: "65535"
+  map-hash-bucket-size: "128"
+---
+# ─────────────── 全局安全响应头（HSTS 等，经 add-headers 注入）───────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-headers
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+data:
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+---
+# ──────────────────────────── Controller ────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1   # 单节点必须 1，否则滚动更新卡死
+      maxSurge: 0
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: ingress-nginx
+      app.kubernetes.io/name: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: ingress-nginx
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+    spec:
+      hostNetwork: true          # 直接绑定宿主机 80/443
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 60
+      serviceAccountName: ingress-nginx
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - operator: Exists         # 单节点控制面也要调度
+      containers:
+      - name: controller
+        image: ${CONTROLLER_IMG}
+        imagePullPolicy: IfNotPresent
+        args:
+        - /nginx-ingress-controller
+        - --election-id=ingress-controller-leader
+        - --controller-class=k8s.io/ingress-nginx
+        - --ingress-class=nginx
+        - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+        - --validating-webhook=:8443
+        - --validating-webhook-certificate=/usr/local/certificates/cert
+        - --validating-webhook-key=/usr/local/certificates/key
+        - --report-node-internal-ip-address   # ingress.status 显示节点 IP
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_BIND_SERVICE"]
+          runAsUser: 101
+          allowPrivilegeEscalation: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - name: http
+          containerPort: 80       # hostNetwork 下直接绑定宿主机 80
+        - name: https
+          containerPort: 443      # 直接绑定宿主机 443
+        - name: webhook
+          containerPort: 8443
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 10254
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10254
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "2"
+            memory: 1Gi
+        volumeMounts:
+        - name: webhook-cert
+          mountPath: /usr/local/certificates
+          readOnly: true
+      volumes:
+      - name: webhook-cert
+        secret:
+          secretName: ingress-nginx-admission
+---
+# ─────────────────────── admission webhook（ingress 校验）────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ingress-nginx-admission
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get","create"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations","mutatingwebhookconfigurations"]
+  verbs: ["get","update","patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ingress-nginx-admission
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-nginx-admission
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get","create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ingress-nginx-admission
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller-admission
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+  ports:
+  - name: https-webhook
+    port: 443
+    targetPort: webhook
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: ingress-nginx-admission
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+webhooks:
+- name: validate.nginx.ingress.kubernetes.io
+  matchPolicy: Equivalent
+  rules:
+  - apiGroups: ["networking.k8s.io"]
+    apiVersions: ["v1"]
+    operations: ["CREATE","UPDATE"]
+    resources: ["ingresses"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      namespace: ingress-nginx
+      name: ingress-nginx-controller-admission
+      path: /networking/v1beta1/ingresses
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingress-nginx-admission-create
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: admission-webhook
+        app.kubernetes.io/name: ingress-nginx
+    spec:
+      serviceAccountName: ingress-nginx-admission
+      restartPolicy: OnFailure
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: create
+        image: ${CERTGEN_IMG}
+        imagePullPolicy: IfNotPresent
+        args:
+        - create
+        - --host=ingress-nginx-controller-admission,ingress-nginx-controller-admission.ingress-nginx.svc
+        - --namespace=ingress-nginx
+        - --secret-name=ingress-nginx-admission
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingress-nginx-admission-patch
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: admission-webhook
+        app.kubernetes.io/name: ingress-nginx
+    spec:
+      serviceAccountName: ingress-nginx-admission
+      restartPolicy: OnFailure
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: patch
+        image: ${CERTGEN_IMG}
+        imagePullPolicy: IfNotPresent
+        args:
+        - patch
+        - --webhook-name=ingress-nginx-admission
+        - --namespace=ingress-nginx
+        - --patch-mutating=false
+        - --patch-validating=true
+        - --secret-name=ingress-nginx-admission

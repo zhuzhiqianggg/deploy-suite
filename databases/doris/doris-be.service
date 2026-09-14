@@ -1,0 +1,32 @@
+[Unit]
+Description=Doris Backend Service
+Documentation=https://doris.apache.org/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+Environment=JAVA_HOME=/data/jdk-17.0.20.1/
+WorkingDirectory=/data/doris/be
+# --daemon 让 doris_be 后台化并写 bin/be.pid；Type=forking 让 systemd 等 PIDFile 出现
+ExecStart=/bin/bash /data/doris/be/bin/start_be.sh --daemon
+# --grace 用 SIGTERM 优雅退出，避免 SIGKILL 损坏 tablet 元数据
+ExecStop=/bin/bash /data/doris/be/bin/stop_be.sh --grace
+PIDFile=/data/doris/be/bin/be.pid
+Restart=always
+RestartSec=15s
+TimeoutStartSec=300
+TimeoutStopSec=120
+# 200G 预算：BE 184G + FE 16G；be.conf mem_limit=170G 在围栏内先行优雅降级
+MemoryHigh=170G
+MemoryMax=184G
+MemorySwapMax=0
+LimitNOFILE=1048576
+LimitNPROC=1000000
+LimitCORE=infinity
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

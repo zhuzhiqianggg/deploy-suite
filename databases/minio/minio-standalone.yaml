@@ -1,0 +1,227 @@
+# MinIO对象数据库内部部署配置 - 单机模式
+# 组件：minio（S3兼容对象存储），Deployment 单副本 + namespace 共享 PVC subPath 存储隔离
+# 镜像对照 images.sh IMAGES 总表「MinIO/Silo 对象存储套件（独立部署）」：
+# pgsty/silo（MinIO 社区维护分支，S3/Admin API、MINIO_* 环境变量、.minio.sys 磁盘格式、
+# /minio/* 路由全部兼容，每季安全修复）；已同步华为云 SWR lianantech-public 仓库。
+# 注意：Milvus 内嵌 minio 沿用老镜像 quay.io/minio/minio（2025-09-07 冻结版），与本套件互不耦合。
+#
+# 服务约定（与 mysql/redis 等数据库同款，2026-09-14 收口）：
+# - minio-service：集群内统一访问入口 + NodePort 对外暴露（service_type/node_port
+#   服务顶层配置，缺省 NodePort、node_port 空 = K8s 自动分配），业务连接地址恒定
+#   minio-service.db-lianantech-hk-release.svc.cluster.local:9000（S3 API）/ :9001（Console）
+# - 无独立 minio-external-service；external 部署方式是 ExternalName/Endpoints
+#   代理集群外对象存储，统一访问名仍为 minio-service，且无 NodePort
+#
+# 资源规格由 products.db.global.resource_profile 控制（规格表固化在本模板）：
+# - small（测试）：1Gi / medium（生产默认）：2Gi / large：4Gi
+#
+# 内存规则：MinIO 数据集常驻内存（缓存+索引），内存 request = limit
+# （调度器按真实占用预留，节点不超卖）；CPU 保持 req 低 / lim 高（可压缩资源）。
+
+# =============================================================================
+# MinIO - S3兼容对象存储
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: minio
+    type: database
+    deployment-mode: internal
+  annotations:
+    description: "MinIO对象存储服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: minio
+        type: database
+        deployment-mode: internal
+      annotations:
+        description: "MinIO对象存储服务"
+        
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9000"
+        prometheus.io/path: "/minio/v2/metrics/cluster"
+        
+    spec:
+      serviceAccountName: db-lianantech-hk-release-sa
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: minio
+      containers:
+      - name: minio
+        image: swr.cn-east-3.myhuaweicloud.com/lianantech-public/pgsty/silo:RELEASE.2026-09-03T13-18-01Z
+        imagePullPolicy: IfNotPresent
+        # pgsty/silo 镜像二进制名为 silo（MinIO drop-in 分支，CLI 参数与 minio 完全一致，
+        # MINIO_* 环境变量原样生效；镜像自带 entrypoint 亦会把 minio 翻译为 silo）
+        command:
+        - silo
+        - server
+        - /data
+        - --console-address
+        - ":9001"
+        env:
+        - name: MINIO_ROOT_USER
+          value: "minio-root"
+        - name: MINIO_ROOT_PASSWORD
+          value: "Tn5vBq8wXz2Lm6Kd"
+        - name: TZ
+          value: Asia/Shanghai
+        ports:
+        - containerPort: 9000
+          name: api
+          protocol: TCP
+        - containerPort: 9001
+          name: console
+          protocol: TCP
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          subPath: minio/standalone/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: api
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: api
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: db-lianantech-hk-release-pvc
+---
+# MinIO主服务（集群内统一访问入口，S3 API + Console）
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: minio
+    type: database-service
+    deployment-mode: internal
+  annotations:
+    description: "MinIO对象存储服务"
+    deployment.type: "internal"
+    service.type: "database"
+spec:
+  # 服务暴露（应用服务同款约定）：internal 部署默认 NodePort 对外暴露，
+  # node_port 配置钉住 9000 S3 API 主端口（未配置由 K8s 自动分配）；集群内统一访问名不变
+  type: NodePort
+  ports:
+  - port: 9000
+    targetPort: api
+    protocol: TCP
+    name: api
+    
+  - port: 9001
+    targetPort: console
+    protocol: TCP
+    name: console
+  selector:
+    app: minio
+  # 集群内访问地址: minio-service.db-lianantech-hk-release.svc.cluster.local:9000 (S3 API) / :9001 (Console)
+
+---
+# MinIO连接信息 - Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-secret
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: minio
+    type: database-secret
+  annotations:
+    description: "MinIO连接信息"
+type: Opaque
+data:
+  host: bWluaW8tc2VydmljZS5kYi1saWFuYW50ZWNoLWhrLXJlbGVhc2Uuc3ZjLmNsdXN0ZXIubG9jYWw=
+  port: OTAwMA==
+  console_port: OTAwMQ==
+  endpoint: aHR0cDovL21pbmlvLXNlcnZpY2UuZGItbGlhbmFudGVjaC1oay1yZWxlYXNlLnN2Yy5jbHVzdGVyLmxvY2FsOjkwMDA=
+  console_url: aHR0cDovL21pbmlvLXNlcnZpY2UuZGItbGlhbmFudGVjaC1oay1yZWxlYXNlLnN2Yy5jbHVzdGVyLmxvY2FsOjkwMDE=
+  root_user: bWluaW8tcm9vdA==
+  root_password: VG41dkJxOHdYejJMbTZLZA==
+
+
+---
+# MinIO监控 - ServiceMonitor（内置 Prometheus 指标端点，无需独立 exporter 容器）
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-monitor
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: minio
+    component: monitoring
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: minio
+  endpoints:
+  - port: api
+    path: /minio/v2/metrics/cluster
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: false
+

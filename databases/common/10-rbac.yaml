@@ -1,0 +1,164 @@
+# =============================================================================
+# Kubernetes RBAC权限配置模板 (默认最高权限)
+# =============================================================================
+# 文件说明：
+# - 此模板提供默认的最高权限配置，简化部署流程
+# - 包含ServiceAccount、Role、ClusterRole、RoleBinding、ClusterRoleBinding
+# - 默认启用集群级别权限，支持完整的Kubernetes资源访问
+# - 使用统一的命名规范：{namespace}-sa, {namespace}-role, {namespace}-rolebinding
+# =============================================================================
+
+
+# =============================================================================
+# ServiceAccount: 服务账户，为Pod提供身份标识
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-lianantech-hk-release-sa
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+automountServiceAccountToken: true
+
+---
+# =============================================================================
+# Role: 命名空间级别的完整权限
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: db-lianantech-hk-release-role
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+rules:
+# 核心资源完整权限
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["*"]
+# Apps资源完整权限
+- apiGroups: ["apps"]
+  resources: ["*"]
+  verbs: ["*"]
+# 网络资源完整权限
+- apiGroups: ["networking.k8s.io"]
+  resources: ["*"]
+  verbs: ["*"]
+# 自动扩缩容资源完整权限
+- apiGroups: ["autoscaling"]
+  resources: ["*"]
+  verbs: ["*"]
+# 批处理资源完整权限
+- apiGroups: ["batch"]
+  resources: ["*"]
+  verbs: ["*"]
+# 扩展资源完整权限
+- apiGroups: ["extensions"]
+  resources: ["*"]
+  verbs: ["*"]
+# 策略资源完整权限
+- apiGroups: ["policy"]
+  resources: ["*"]
+  verbs: ["*"]
+# 存储资源完整权限
+- apiGroups: ["storage.k8s.io"]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+# =============================================================================
+# ClusterRole: 集群级别的完整权限
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: db-lianantech-hk-release-cluster-role
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+rules:
+# 集群级别完整权限
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+# 非资源URL权限
+- nonResourceURLs: ["*"]
+  verbs: ["*"]
+
+---
+# =============================================================================
+# ClusterRoleBinding: 将ServiceAccount绑定到ClusterRole
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: db-lianantech-hk-release-cluster-rolebinding
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+subjects:
+- kind: ServiceAccount
+  name: db-lianantech-hk-release-sa
+  namespace: db-lianantech-hk-release
+roleRef:
+  kind: ClusterRole
+  name: db-lianantech-hk-release-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# RoleBinding: 将ServiceAccount绑定到Role
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: db-lianantech-hk-release-rolebinding
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+subjects:
+- kind: ServiceAccount
+  name: db-lianantech-hk-release-sa
+  namespace: db-lianantech-hk-release
+roleRef:
+  kind: Role
+  name: db-lianantech-hk-release-role
+  apiGroup: rbac.authorization.k8s.io
+
+
+
+# =============================================================================
+# 配置说明：
+# =============================================================================
+# 必需配置：
+#   rbac_enabled: true/false - 控制是否生成RBAC资源 (默认: true)
+#   namespace: 命名空间名称
+#   product_name: 产品名称
+#
+# 简化说明：
+#   - 此模板默认提供最高权限，无需额外配置
+#   - 自动启用集群级别权限，支持完整的Kubernetes资源访问
+#   - 移除了复杂的权限级别配置，简化部署流程
+#   - 适用于所有类型的应用和服务
+#
+# 命名规范：
+#   ServiceAccount: {namespace}-sa
+#   Role: {namespace}-role
+#   ClusterRole: {namespace}-cluster-role
+#   RoleBinding: {namespace}-rolebinding
+#   ClusterRoleBinding: {namespace}-cluster-rolebinding
+# =============================================================================

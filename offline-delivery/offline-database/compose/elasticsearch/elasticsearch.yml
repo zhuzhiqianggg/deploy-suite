@@ -1,0 +1,9 @@
+cluster.name: es-cluster
+node.name: es-node-1
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+discovery.type: single-node
+bootstrap.memory_lock: true
+xpack.security.enabled: false
+xpack.monitoring.collection.enabled: false

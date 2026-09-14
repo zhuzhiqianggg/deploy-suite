@@ -1,0 +1,12 @@
+certbot/certbot
+langgenius/dify-agent-backend:1.16.0-rc1
+langgenius/dify-agent-local-sandbox:1.16.0-rc1
+langgenius/dify-api:1.16.0-rc1
+langgenius/dify-plugin-daemon:0.6.3-local
+langgenius/dify-sandbox:0.2.15
+langgenius/dify-web:1.16.0-rc1
+nginx:latest
+postgres:15-alpine
+redis:6-alpine
+semitechnologies/weaviate:1.27.0
+ubuntu/squid:latest

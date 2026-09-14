@@ -1,0 +1,87 @@
+services:
+  metad:
+    image: vesoft/nebula-metad:v3.8.0
+    container_name: nebula-metad
+    restart: always
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    command:
+      - --meta_server_addrs=${METAD_ADDRS}
+      - --local_ip=${LOCAL_IP}
+      - --ws_ip=${LOCAL_IP}
+      - --port=9559
+      - --ws_http_port=19559
+      - --data_path=/data/meta
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/metad/data:/data/meta
+      - /data/nebulagraph/metad/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://${LOCAL_IP}:19559/status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  storaged:
+    image: vesoft/nebula-storaged:v3.8.0
+    container_name: nebula-storaged
+    restart: always
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    depends_on:
+      metad:
+        condition: service_healthy
+    command:
+      - --meta_server_addrs=${METAD_ADDRS}
+      - --local_ip=${LOCAL_IP}
+      - --ws_ip=${LOCAL_IP}
+      - --port=9779
+      - --ws_http_port=19779
+      - --data_path=/data/storage
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/storaged/data:/data/storage
+      - /data/nebulagraph/storaged/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://${LOCAL_IP}:19779/status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  graphd:
+    image: vesoft/nebula-graphd:v3.8.0
+    container_name: nebula-graphd
+    restart: always
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    depends_on:
+      metad:
+        condition: service_healthy
+      storaged:
+        condition: service_started
+    command:
+      - --meta_server_addrs=${METAD_ADDRS}
+      - --port=9669
+      - --ws_http_port=19669
+      - --local_ip=${LOCAL_IP}
+      - --ws_ip=${LOCAL_IP}
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/graphd/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://${LOCAL_IP}:19669/status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

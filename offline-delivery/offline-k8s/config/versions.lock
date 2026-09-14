@@ -1,0 +1,14 @@
+ARCH=amd64
+RPM_ARCH=x86_64
+VERSION_POLICY=fixed-reviewed
+ALLOW_PRERELEASE=false
+AUTO_UPGRADE=false
+SEALOS_VERSION=v5.1.1
+KUBERNETES_MINOR=1.33
+KUBERNETES_VERSION=v1.33.6
+CALICO_VERSION=v3.28.1
+INGRESS_NGINX_VERSION=controller-v1.15.1
+INGRESS_NGINX_CHART_VERSION=4.15.1
+KUBOARD_VERSION=v3
+HELM_VERSION=v3.21.2
+VERSION_NOTES="fixed reviewed component versions; upstream Kubernetes support window considered; no automatic downgrade or upgrade"

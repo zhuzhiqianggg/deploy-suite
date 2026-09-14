@@ -1,0 +1,51 @@
+# Apache Doris 2.1.11 单机测试版
+# 生产环境建议使用二进制包集群部署
+# 数据目录: /data/doris/{fe,be}/{data,log}
+services:
+  doris-fe:
+    image: apache/doris:2.1.11-fe
+    container_name: doris-fe
+    restart: unless-stopped
+    hostname: doris-fe
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+    environment:
+      - FE_SERVERS=fe1:192.168.0.10:9010
+      - FE_ID=fe1
+    volumes:
+      - /data/doris/fe/data:/opt/apache-doris/fe/doris-meta
+      - /data/doris/fe/log:/opt/apache-doris/fe/log
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8030/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  doris-be:
+    image: apache/doris:2.1.11-be
+    container_name: doris-be
+    restart: unless-stopped
+    hostname: doris-be
+    ports:
+      - "8040:8040"
+      - "9050:9050"
+    environment:
+      - FE_SERVERS=fe1:192.168.0.10:9010
+      - BE_ADDR=192.168.0.10:9050
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+    volumes:
+      - /data/doris/be/data:/opt/apache-doris/be/storage
+      - /data/doris/be/log:/opt/apache-doris/be/log
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8040/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+# 注意: Doris Docker 镜像默认使用 192.168.0.10 内部 IP，
+# 单机测试可直接使用，生产环境请替换为实际网络配置或使用二进制包部署。

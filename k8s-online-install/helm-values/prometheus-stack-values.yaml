@@ -1,0 +1,111 @@
+# ============================================================================
+# kube-prometheus-stack values —— 由 10-prometheus-stack.sh 从 config.env 生成
+# release: kps / chart: kube-prometheus-stack 90.0.0 / namespace: monitoring
+# ============================================================================
+# 用户后续自己部署 ServiceMonitor/PodMonitor 时也能被纳管（默认只认本 release 的）
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30900
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 40GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: "2"
+        memory: "8Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+    # local-path 底层是 hostPath：不响应 fsGroup，且 volumeMount 带 subPath（prometheus-db/），
+    # 非 root 运行必然 permission denied（queries.active）→ 以 root 运行（单节点 lab 权衡）
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
+      runAsNonRoot: false
+      fsGroup: 0
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30903
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: nfs-client
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+
+grafana:
+  service:
+    type: NodePort
+    nodePort: 30300
+  adminUser: "admin"
+  adminPassword: "g3nt7xodB0I57vSonacG"
+  persistence:
+    enabled: true
+    storageClassName: nfs-client
+    accessModes: ["ReadWriteOnce"]
+    size: 5Gi
+
+# ── 组件开关 ────────────────────────────────────────────────────────────────
+prometheusOperator:
+  admissionWebhooks:
+    enabled: true
+    patch:
+      image:
+        registry: registry.k8s.io
+        repository: ingress-nginx/kube-webhook-certgen
+        tag: v1.5.1
+nodeExporter:
+  enabled: true
+kubeStateMetrics:
+  enabled: true
+# kube-proxy 指标默认只监听 127.0.0.1:10249，Pod 侧抓不到 → 关掉避免 targetDown 告警噪音
+kubeProxy:
+  enabled: false
+# etcd 指标需要客户端证书认证，配置复杂且已有每日自动快照兜底 → 关掉
+kubeEtcd:
+  enabled: false
+# kubeadm/sealos 静态 Pod 的 scheduler/controller-manager：填节点 IP endpoints，
+# 证书为 kubelet serving 证书 → https + 跳过校验
+kubeScheduler:
+  enabled: true
+  endpoints: ["173.23.1.2"]
+  serviceMonitor:
+    https: true
+    tlsConfig:
+      insecureSkipVerify: true
+kubeControllerManager:
+  enabled: true
+  endpoints: ["173.23.1.2"]
+  serviceMonitor:
+    https: true
+    tlsConfig:
+      insecureSkipVerify: true

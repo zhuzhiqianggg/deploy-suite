@@ -1,0 +1,3 @@
+# role ip ssh_user ssh_port
+master 192.168.1.10 root 22
+# worker 192.168.1.11 root 22

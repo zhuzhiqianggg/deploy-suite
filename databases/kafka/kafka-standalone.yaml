@@ -1,0 +1,462 @@
+# =============================================================================
+# Kafka单机部署模板 - KRaft模式
+# =============================================================================
+# 为Kafka单机部署创建统一的Kubernetes资源
+# 使用KRaft模式，无需ZooKeeper依赖
+# 使用namespace级别的PVC，通过subPath隔离数据: kafka/standalone/data
+#
+# 简化模式：镜像、storage_class、image_pull_secrets 等最佳实践默认值
+# 直接写死在本模板里，生成器只传递基础配置（namespace/env/db_mode 等）。
+# 资源规格由 products.db.global.resource_profile 控制：
+# - small（测试）：heap 512m，内存 2Gi / medium（生产默认）：heap 1g，内存 4Gi
+#
+# 内存规则（2026-08-25 修订）：内存 request = limit——Kafka 实际用量会随 page cache
+# 逼近 limit，request=limit 让调度器按真实占用预留，节点不超卖、集群分布均衡；
+# CPU 保持 request 低 / limit 高（可压缩资源，超卖无害）。
+# heap = limit 的 25%~50%，剩余给 OS page cache（Kafka 吞吐核心靠 page cache）。
+#
+# kafka-ui 套件（2026-08-25 合并）：kafka-ui 启用时作为本模板条件段输出，
+# 与 ES（ES+exporter+kibana）套件模式一致——一个文件一套完整资源。
+# =============================================================================# =============================================================================
+# Kafka ConfigMap - 配置文件
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka
+    type: database-config
+    deployment-mode: internal
+  annotations:
+    description: "Kafka消息队列服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+data:
+  server.properties: |
+    # Kafka单机配置 - release环境 - KRaft模式
+    broker.id=1
+
+    # KRaft模式配置
+    process.roles=broker,controller
+    node.id=1
+    controller.quorum.voters=1@localhost:9093
+    controller.listener.names=CONTROLLER
+
+    # 监听器配置
+    listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+    advertised.listeners=PLAINTEXT://kafka-service.db-lianantech-hk-release.svc.cluster.local:9092
+    listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+    inter.broker.listener.name=PLAINTEXT
+
+    # 日志目录配置
+    log.dirs=/opt/kafka/data
+    num.network.threads=3
+    num.io.threads=8
+
+    # 网络配置优化
+    # socket.request.max.bytes: 最大请求大小，设置为50MB以防止异常大请求攻击
+    # 来自100.125.47.0的云厂商metadata异常大请求(1.1GB)会被拒绝
+    socket.send.buffer.bytes=102400
+    socket.receive.buffer.bytes=102400
+    socket.request.max.bytes=52428800
+
+    # 日志保留配置（写死值）
+    log.retention.hours=168
+    log.retention.bytes=1073741824
+    log.segment.bytes=1073741824
+    log.retention.check.interval.ms=300000
+
+    # 主题配置（写死值）
+    auto.create.topics.enable=true
+    default.replication.factor=1
+    min.insync.replicas=1
+    num.partitions=3
+
+    # 性能调优
+    replica.fetch.max.bytes=1048576
+    message.max.bytes=1000000
+    replica.socket.timeout.ms=30000
+    replica.socket.receive.buffer.bytes=65536
+
+    # 清理配置
+    log.cleanup.policy=delete
+    log.cleaner.enable=true
+
+    # 副本配置
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1
+
+    # 组协调器配置
+    group.initial.rebalance.delay.ms=0
+
+    # JMX配置
+    jmx.port=9999
+
+---
+# Kafka部署
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka
+    type: database
+    deployment-mode: internal
+  annotations:
+    description: "Kafka消息队列服务"
+    deployment.type: "internal"
+    deployment.mode: "standalone"
+spec:
+  replicas: 1
+  serviceName: kafka-service
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: kafka
+        type: database
+        deployment-mode: internal
+      annotations:
+        description: "Kafka消息队列服务"
+    spec:
+      serviceAccountName: default
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      securityContext:
+        fsGroup: 1000
+      # 初始化容器 - 确保数据目录权限正确
+      initContainers:
+      - name: init-permissions
+        image: docker.io/library/busybox:1.38.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          echo "初始化Kafka数据目录权限..."
+          mkdir -p /opt/kafka/data
+          chown -R 1000:1000 /opt/kafka/data
+          chmod -R 755 /opt/kafka/data
+          echo "权限设置完成"
+          ls -la /opt/kafka/data
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /opt/kafka/data
+          subPath: kafka/standalone/data
+      containers:
+      - name: kafka
+        image: docker.io/apache/kafka:4.2.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9092
+          name: kafka
+          protocol: TCP
+        - containerPort: 9093
+          name: controller
+          protocol: TCP
+        - containerPort: 9999
+          name: jmx
+          protocol: TCP
+        env:
+        - name: KAFKA_BROKER_ID
+          value: "1"
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+        - name: KAFKA_NODE_ID
+          value: "1"
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: "1@localhost:9093"
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "PLAINTEXT"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://kafka-service.db-lianantech-hk-release.svc.cluster.local:9092"
+        - name: KAFKA_LOG_DIRS
+          value: "/opt/kafka/data"
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "168"
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: "true"
+        - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_MIN_INSYNC_REPLICAS
+          value: "1"
+        - name: KAFKA_NUM_PARTITIONS
+          value: "3"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
+        - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+          value: "0"
+        - name: KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL
+          value: ""
+        - name: KAFKA_JMX_PORT
+          value: "9999"
+        - name: KAFKA_JMX_HOSTNAME
+          value: "localhost"
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx1g -Xms1g"
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /opt/kafka/data
+          subPath: kafka/standalone/data
+        - name: kafka-config
+          mountPath: /etc/kafka/server.properties
+          subPath: server.properties
+        resources:
+          requests:
+            cpu: 500m
+            memory: 4Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+      volumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: db-lianantech-hk-release-pvc
+      - name: kafka-config
+        configMap:
+          name: kafka-config
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+
+---
+# Kafka服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka
+    type: database-service
+    deployment-mode: internal
+  annotations:
+    description: "Kafka消息队列服务"
+    deployment.type: "internal"
+    service.type: "database"
+spec:
+  type: NodePort
+  ports:
+  - name: kafka
+    port: 9092
+    targetPort: 9092
+    nodePort: 31775
+    protocol: TCP
+  - name: controller
+    port: 9093
+    targetPort: 9093
+    protocol: TCP
+  - name: jmx
+    port: 9999
+    targetPort: 9999
+    protocol: TCP
+  selector:
+    app: kafka
+  # 集群内访问地址: kafka-service.db-lianantech-hk-release.svc.cluster.local:9092
+
+---
+# Kafka连接信息 - ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-connection-info
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka
+    type: database-connection
+  annotations:
+    description: "Kafka连接信息"
+data:
+  # 基础连接信息
+  host: "kafka-service.db-lianantech-hk-release.svc.cluster.local"
+  port: "9092"
+
+  # 连接字符串
+  bootstrap_servers: "kafka-service.db-lianantech-hk-release.svc.cluster.local:9092"
+  connection_string: "kafka://kafka-service.db-lianantech-hk-release.svc.cluster.local:9092"
+
+
+---
+# =============================================================================
+# Kafka UI 管理界面（套件合并：与 Kafka 同文件输出，2026-08-25）
+# 内部 Kafka 模式下连接 kafka-service；外部 Kafka 模式下连接 kafka_host:port
+# =============================================================================
+# Kafka UI部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka-ui
+    type: ui
+    deployment-mode: internal
+  annotations:
+    description: "Kafka UI管理界面部署（kafka套件）"
+    deployment.type: "internal"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        product: db
+        version: lianantech
+        branch: hk
+        env: release
+        app: kafka-ui
+        type: ui
+        deployment-mode: internal
+    spec:
+      serviceAccountName: default
+      imagePullSecrets:
+      
+      - name: registry-secret
+      
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+      - name: kafka-ui
+        image: docker.io/provectuslabs/kafka-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: KAFKA_CLUSTERS_0_NAME
+          value: "db-lianantech-hk-release-kafka"
+        - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+          value: "kafka-service.db-lianantech-hk-release.svc.cluster.local:9092"
+        - name: KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL
+          value: "PLAINTEXT"
+        - name: SERVER_SERVLET_CONTEXT_PATH
+          value: "/"
+        - name: LOGGING_LEVEL_ROOT
+          value: "INFO"
+        - name: LOGGING_LEVEL_COM_PROVECTUS
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+
+---
+# Kafka UI服务（集群内访问）
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui-service
+  namespace: db-lianantech-hk-release
+  labels:
+    product: db
+    version: lianantech
+    branch: hk
+    env: release
+    app: kafka-ui
+    type: ui-service
+    deployment-mode: internal
+  annotations:
+    description: "Kafka UI管理界面服务"
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 31192
+    protocol: TCP
+    name: http
+  selector:
+    app: kafka-ui
+  # 集群内访问地址: kafka-ui-service.db-lianantech-hk-release.svc.cluster.local:8080

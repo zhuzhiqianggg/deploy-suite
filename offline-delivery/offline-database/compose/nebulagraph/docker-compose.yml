@@ -1,0 +1,112 @@
+services:
+  metad:
+    image: vesoft/nebula-metad:v3.8.0
+    container_name: nebula-metad
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    command:
+      - --meta_server_addrs=metad:9559
+      - --local_ip=metad
+      - --ws_ip=metad
+      - --port=9559
+      - --ws_http_port=19559
+      - --data_path=/data/meta
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/metad/data:/data/meta
+      - /data/nebulagraph/metad/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://metad:19559/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  storaged:
+    image: vesoft/nebula-storaged:v3.8.0
+    container_name: nebula-storaged
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    depends_on:
+      metad:
+        condition: service_healthy
+    command:
+      - --meta_server_addrs=metad:9559
+      - --local_ip=storaged
+      - --ws_ip=storaged
+      - --port=9779
+      - --ws_http_port=19779
+      - --data_path=/data/storage
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/storaged/data:/data/storage
+      - /data/nebulagraph/storaged/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://storaged:19779/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  graphd:
+    image: vesoft/nebula-graphd:v3.8.0
+    container_name: nebula-graphd
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      TZ: Asia/Shanghai
+    depends_on:
+      metad:
+        condition: service_healthy
+      storaged:
+        condition: service_started
+    ports:
+      - "9669:9669"
+      - "19669:19669"
+    command:
+      - --meta_server_addrs=metad:9559
+      - --port=9669
+      - --ws_http_port=19669
+      - --local_ip=graphd
+      - --ws_ip=graphd
+      - --redirect_stdout=false
+    volumes:
+      - /data/nebulagraph/graphd/logs:/usr/local/nebula/logs
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://graphd:19669/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  storage-activator:
+    image: vesoft/nebula-console:v3.8.0
+    container_name: nebula-storage-activator
+    restart: on-failure
+    depends_on:
+      graphd:
+        condition: service_healthy
+    entrypoint: ""
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        for i in 1 2 3 4 5; do
+          echo "Registering storage hosts (attempt $$i/5)..."
+          if nebula-console -addr graphd -port 9669 -u root -p nebula -e 'ADD HOSTS "storaged":9779' 2>&1; then
+            echo "Registration complete!"
+            exit 0
+          fi
+          echo "Attempt $$i failed, retrying in 10s..."
+          [ "$$i" -lt 5 ] && sleep 10
+        done
+        echo "Registration failed after 5 attempts"
+        exit 1

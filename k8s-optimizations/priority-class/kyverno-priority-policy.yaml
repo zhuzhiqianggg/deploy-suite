@@ -1,0 +1,79 @@
+# ============================================================================
+# Kyverno 自动注入 priorityClassName 方案（推荐用于长期运维）
+# ============================================================================
+# 原理：安装 Kyverno 策略引擎，编写 ClusterPolicy，
+#       根据 namespace 后缀自动注入 priorityClassName
+#       新创建的 Pod 自动获得对应优先级，无需修改应用 yaml
+#
+# 优势：
+#   - 新部署的应用自动注入，无需手动 patch
+#   - 应用 yaml 保持干净，不耦合运维策略
+#   - 规则集中管理，调整方便
+# ============================================================================
+
+---
+# Kyverno ClusterPolicy: 按命名空间后缀自动注入 priorityClassName
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-priorityclass-by-namespace
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: "Deployment,StatefulSet,DaemonSet,Job,CronJob"
+    description: "根据命名空间后缀自动注入 priorityClassName，实现按环境驱逐优先级"
+spec:
+  background: true
+  rules:
+  # 生产环境 → prod-priority (100000)
+  - name: inject-prod-priority
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - "*-prod"
+          - "*-release"
+    mutate:
+      patchStrategicMerge:
+        spec:
+          priorityClassName: prod-priority
+  # 预发环境 → pre-priority (5000) ★ 优先驱逐
+  - name: inject-pre-priority
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - "*-pre"
+    mutate:
+      patchStrategicMerge:
+        spec:
+          priorityClassName: pre-priority
+  # 测试环境 → test-priority (1000)
+  - name: inject-test-priority
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - "*-test"
+    mutate:
+      patchStrategicMerge:
+        spec:
+          priorityClassName: test-priority
+  # 临时环境 → temp-priority (100)
+  - name: inject-temp-priority
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - "db-verify-*"
+          - "*-temp"
+    mutate:
+      patchStrategicMerge:
+        spec:
+          priorityClassName: temp-priority
