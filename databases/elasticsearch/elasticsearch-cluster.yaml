@@ -107,11 +107,15 @@ spec:
         volumeMounts:
         - name: elasticsearch-data
           mountPath: /usr/share/elasticsearch/data
-      # IK 中文分词插件：与 ES 严格同版本的插件整目录放在 NFS 共享存储
-      # /data/nfs/{ns}/elasticsearch/plugins/analysis-ik/（由运维侧 unzip 预置，
-      # 源: https://release.infinilabs.com/analysis-ik/stable/elasticsearch-analysis-ik-<版本>.zip），
-      # 主容器只读挂载即可，ES 启动时扫描加载。多节点共享同一份，扩容/重建 Pod 无需节点预置，
-      # 也不能用 elasticsearch-plugin install 装 zip（实测会丢 config/ 词典目录，首次分词 NPE）
+      # IK 中文分词插件，目录三层对应关系（标准 ES 布局）：
+      #   NFS 侧 /data/nfs/{ns}/elasticsearch/plugins/   ←→   容器内 /usr/share/elasticsearch/plugins
+      # plugins 与 config 同级（ES_HOME 下）；plugins/ 下每插件一个子目录（analysis-ik/，
+      # plugin-descriptor.properties 必须在插件子目录内，不能摊平到 plugins/ 根下）。
+      # 插件由运维侧预置（源: https://release.infinilabs.com/analysis-ik/stable/
+      # elasticsearch-analysis-ik-<ES同版本>.zip，unzip 后整目录放入 plugins/ 下），
+      # 多节点共享同一份，扩容/重建 Pod 无需节点预置；
+      # 也不能用 elasticsearch-plugin install 装 zip（实测会丢 config/ 词典目录，首次分词 NPE）。
+      # initContainer 启动前校验插件完整性，缺失则快速失败，避免 ES 正常启动但分词报错
       - name: install-ik-plugin
         image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
         imagePullPolicy: IfNotPresent
@@ -120,12 +124,12 @@ spec:
         - -c
         - |
           set -e
-          test -f /es-plugins/analysis-ik/plugin-descriptor.properties
-          test -f /es-plugins/analysis-ik/config/IKAnalyzer.cfg.xml
+          test -f /usr/share/elasticsearch/plugins/analysis-ik/plugin-descriptor.properties
+          test -f /usr/share/elasticsearch/plugins/analysis-ik/config/IKAnalyzer.cfg.xml
           echo "IK plugin on NFS verified"
         volumeMounts:
         - name: ik-plugin
-          mountPath: /es-plugins
+          mountPath: /usr/share/elasticsearch/plugins
           readOnly: true
       containers:
       - name: elasticsearch
@@ -212,8 +216,8 @@ spec:
           mountPath: /usr/share/elasticsearch/config/transport-certs
           readOnly: true
 
-        # IK 插件目录（NFS 共享只读挂载，插件由运维预置到 /data/nfs/{ns}/elasticsearch/plugins/，
-        # install-ik-plugin initContainer 启动前校验插件完整性）
+        # IK 插件目录：NFS 只读挂载到 ES 默认插件目录（ES_HOME/plugins，与 config 同级），
+        # 与 data（volumeClaimTemplates，NFS 动态供给）并列，构成 data/plugins 节点目录结构
         - name: ik-plugin
           mountPath: /usr/share/elasticsearch/plugins
           readOnly: true
