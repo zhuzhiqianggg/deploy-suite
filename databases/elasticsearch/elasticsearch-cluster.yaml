@@ -279,7 +279,9 @@ spec:
           protocol: TCP
         env:
         - name: ELASTICSEARCH_HOSTS
-          value: "https://elasticsearch-service.db-lianantech-hk-release.svc.cluster.local:9200"
+          # ES 集群 http.ssl.enabled=false（明文 + 密码认证），必须是 http，用 https 会导致
+          # ssl3_get_record:wrong version number 连接失败，进而 ruleRegistry 安装超时
+          value: "http://elasticsearch-service.db-lianantech-hk-release.svc.cluster.local:9200"
         - name: ELASTICSEARCH_USERNAME
           valueFrom:
             secretKeyRef:
