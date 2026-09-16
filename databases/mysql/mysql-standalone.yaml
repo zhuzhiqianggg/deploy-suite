@@ -332,15 +332,17 @@ metadata:
     databases.count: "9"
     
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
   - port: 3306
     targetPort: 3306
     protocol: TCP
     name: mysql
+    nodePort: 30306
   selector:
     app: mysql
   # 集群内访问地址: mysql-service.db-lianantech-hk-release.svc.cluster.local:3306
+  # 外部访问地址: <节点IP>:30306
 
 ---
 # MySQL Exporter - 监控指标导出（与 MySQL 同文件，作为 MySQL 套件的一部分）
