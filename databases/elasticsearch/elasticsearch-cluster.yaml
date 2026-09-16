@@ -107,12 +107,11 @@ spec:
         volumeMounts:
         - name: elasticsearch-data
           mountPath: /usr/share/elasticsearch/data
-      # IK 中文分词插件：官方已不在 GitHub 发版，改为从 release.infinilabs.com 下载与 ES
-      # 严格同版本的 zip 在节点上解压到 /data/es-plugins/analysis-ik/（含 config 词典目录）；
-      # initContainer 直接拷贝到 emptyDir（Pod 重建时自动重装，不侵入官方镜像）。
-      # 注意1：插件目录名是 descriptor 里的 analysis-ik（不是 ik），分词器名才是 ik_max_word/ik_smart
-      # 注意2：不能用 elasticsearch-plugin install 装 zip——实测它解包会丢 config/ 词典目录，
-      #        导致首次分词 NPE（Dictionary _StopWords is null），必须整目录拷贝
+      # IK 中文分词插件：与 ES 严格同版本的插件整目录放在 NFS 共享存储
+      # /data/nfs/{ns}/elasticsearch/plugins/analysis-ik/（由运维侧 unzip 预置，
+      # 源: https://release.infinilabs.com/analysis-ik/stable/elasticsearch-analysis-ik-<版本>.zip），
+      # 主容器只读挂载即可，ES 启动时扫描加载。多节点共享同一份，扩容/重建 Pod 无需节点预置，
+      # 也不能用 elasticsearch-plugin install 装 zip（实测会丢 config/ 词典目录，首次分词 NPE）
       - name: install-ik-plugin
         image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
         imagePullPolicy: IfNotPresent
@@ -121,19 +120,13 @@ spec:
         - -c
         - |
           set -e
-          rm -rf /usr/share/elasticsearch/plugins/analysis-ik
-          cp -a /es-plugin-zip/analysis-ik /usr/share/elasticsearch/plugins/analysis-ik
-          chown -R 1000:0 /usr/share/elasticsearch/plugins
-          echo "=== IK plugin installed ==="
-          ls /usr/share/elasticsearch/plugins/analysis-ik
-        securityContext:
-          runAsUser: 0
+          test -f /es-plugins/analysis-ik/plugin-descriptor.properties
+          test -f /es-plugins/analysis-ik/config/IKAnalyzer.cfg.xml
+          echo "IK plugin on NFS verified"
         volumeMounts:
-        - name: ik-plugin-zip
-          mountPath: /es-plugin-zip
-          readOnly: true
         - name: ik-plugin
-          mountPath: /usr/share/elasticsearch/plugins
+          mountPath: /es-plugins
+          readOnly: true
       containers:
       - name: elasticsearch
         image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
@@ -219,9 +212,11 @@ spec:
           mountPath: /usr/share/elasticsearch/config/transport-certs
           readOnly: true
 
-        # IK 插件目录（由 install-ik-plugin initContainer 装入 emptyDir）
+        # IK 插件目录（NFS 共享只读挂载，插件由运维预置到 /data/nfs/{ns}/elasticsearch/plugins/，
+        # install-ik-plugin initContainer 启动前校验插件完整性）
         - name: ik-plugin
           mountPath: /usr/share/elasticsearch/plugins
+          readOnly: true
         
       volumes:
       
@@ -229,13 +224,12 @@ spec:
         secret:
           secretName: elasticsearch-transport-tls
 
-      # IK 插件 zip（节点上预下载，与 ES 版本严格一致）与安装产物
-      - name: ik-plugin-zip
-        hostPath:
-          path: /data/es-plugins
-          type: Directory
+      # IK 插件：NFS 共享存储（与数据 PVC 同一 NFS 服务），所有节点共用同一份插件，
+      # 扩容新节点无需任何预置；升级插件只需替换 NFS 目录并重建 Pod
       - name: ik-plugin
-        emptyDir: {}
+        nfs:
+          server: 173.23.1.2
+          path: /data/nfs/db-lianantech-hk-release/elasticsearch/plugins
       
   volumeClaimTemplates:
   - metadata:
