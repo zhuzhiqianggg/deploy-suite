@@ -107,6 +107,33 @@ spec:
         volumeMounts:
         - name: elasticsearch-data
           mountPath: /usr/share/elasticsearch/data
+      # IK 中文分词插件：官方已不在 GitHub 发版，改为从 release.infinilabs.com 下载与 ES
+      # 严格同版本的 zip 在节点上解压到 /data/es-plugins/analysis-ik/（含 config 词典目录）；
+      # initContainer 直接拷贝到 emptyDir（Pod 重建时自动重装，不侵入官方镜像）。
+      # 注意1：插件目录名是 descriptor 里的 analysis-ik（不是 ik），分词器名才是 ik_max_word/ik_smart
+      # 注意2：不能用 elasticsearch-plugin install 装 zip——实测它解包会丢 config/ 词典目录，
+      #        导致首次分词 NPE（Dictionary _StopWords is null），必须整目录拷贝
+      - name: install-ik-plugin
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          rm -rf /usr/share/elasticsearch/plugins/analysis-ik
+          cp -a /es-plugin-zip/analysis-ik /usr/share/elasticsearch/plugins/analysis-ik
+          chown -R 1000:0 /usr/share/elasticsearch/plugins
+          echo "=== IK plugin installed ==="
+          ls /usr/share/elasticsearch/plugins/analysis-ik
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: ik-plugin-zip
+          mountPath: /es-plugin-zip
+          readOnly: true
+        - name: ik-plugin
+          mountPath: /usr/share/elasticsearch/plugins
       containers:
       - name: elasticsearch
         image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
@@ -191,12 +218,24 @@ spec:
         - name: elasticsearch-transport-certs
           mountPath: /usr/share/elasticsearch/config/transport-certs
           readOnly: true
+
+        # IK 插件目录（由 install-ik-plugin initContainer 装入 emptyDir）
+        - name: ik-plugin
+          mountPath: /usr/share/elasticsearch/plugins
         
       volumes:
       
       - name: elasticsearch-transport-certs
         secret:
           secretName: elasticsearch-transport-tls
+
+      # IK 插件 zip（节点上预下载，与 ES 版本严格一致）与安装产物
+      - name: ik-plugin-zip
+        hostPath:
+          path: /data/es-plugins
+          type: Directory
+      - name: ik-plugin
+        emptyDir: {}
       
   volumeClaimTemplates:
   - metadata:
