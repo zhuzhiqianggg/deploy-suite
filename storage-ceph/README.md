@@ -3,6 +3,47 @@
 > 适用前提：**≥3 台 K8s worker 节点**。单节点集群无 HA 意义，请继续用 NFS（databases/ 体系）。
 > 本套件是"未来扩容到多节点后的存储升级方案"，与现有 NFS 可共存、可渐进迁移。
 
+## 0. 磁盘怎么给 Ceph？（先读，与 NFS/普通运维经验相反）
+
+**核心结论：专用盘不分区、不格式化、不挂载。Ceph（BlueStore）直接接管整块裸盘自己管理。**
+"挂载给 Ceph"是错误姿势——挂载过的盘 OSD 会直接拒绝使用。
+
+### 3 节点部署怎么插盘
+
+| 项 | 要求 |
+|---|---|
+| 盘数量 | 每台节点 **≥1 块专用数据盘**（3 台就是 3 块起步），插在各自服务器上即可 |
+| 盘的状态 | 必须是**空闲裸盘**：无分区、无文件系统、未挂载、不在 LVM/RAID 里 |
+| 盘的规格 | SSD/NVMe 最佳（数据库负载建议 NVMe ≥200GB）；HDD 能用但性能差；容量各节点尽量一致 |
+| 禁止 | ①系统盘 ②/data 那块 NFS 盘 ③已挂载任何目录的盘——绝不能给 Ceph |
+
+### 新盘上机后的准备动作（每台节点）
+
+```bash
+# 1) 找到新盘（看 SIZE 和无 MOUNTPOINTS 的盘，确认设备名如 /dev/sdb）
+lsblk -d -o NAME,SIZE,TYPE,MOUNTPOINTS
+
+# 2) 判断是否"干净"：以下命令应有输出=裸盘可用；报错/有分区表=先擦盘
+wipefs /dev/sdb        # 输出为空 → 干净裸盘 ✓
+
+# 3) 若是旧盘/有残留（分区表、文件系统、Ceph 旧数据），彻底擦净：
+wipefs -a /dev/sdb && sgdisk --zap-all /dev/sdb && dd if=/dev/zero of=/dev/sdb bs=1M count=100
+#    注：这块盘上的数据会全部销毁，确认无误再执行
+
+# 4) 完了。不需要 mount，不需要写 fstab，什么都不用挂。
+#    useAllDevices=true 时 operator 每分钟自动扫描各节点空闲裸盘并创建 OSD
+```
+
+### 验证 Ceph 真的"吃"到了盘
+
+```bash
+./deploy.sh status            # ceph -s 里 OSD: 3 up, 3 in 即 3 块盘都接管了
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd tree
+# 输出里每个 osd.x 挂在对应节点下，RFC 状态 up/in 即正常
+```
+
+后续加盘扩容更简单：新盘插上 → 擦净（步骤 3）→ 什么都不配，几分钟后 `ceph osd tree` 自动多一个 OSD。
+
 ## 1. 架构
 
 ```text
@@ -15,7 +56,7 @@ K8s 集群（≥3 worker，ARM64 OK）
 └── CSI 驱动 (rbd/cephfs)     ← 把 Ceph 变成 StorageClass 的桥梁
 
 宿主机要求:
-- 每节点 ≥1 块空闲裸盘（无分区/无文件系统/未挂载），10G 内网更佳
+- 每节点 ≥1 块专用裸盘（见第 0 节，不分区不挂载），10G 内网更佳
 - dataDirHostPath=/var/lib/rook（mon/osd 元数据，重装必须清）
 - 内核模块 rbd/libceph/ceph（Ubuntu 22.04 自带）
 ```
