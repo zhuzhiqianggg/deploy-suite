@@ -1,0 +1,30 @@
+# CephCluster：mon×3（仲裁 HA）+ mgr×2（主备）+ OSD（每节点空闲裸盘各一 OSD）
+# __CEPH_IMAGE__ / __DEVICE_FILTER__ 由 deploy.sh 用 sed 注入
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+spec:
+  cephVersion:
+    image: __CEPH_IMAGE__        # 多架构镜像（含 ARM64）；SWR 模式下 deploy.sh 自动替换
+    allowUnsupported: false
+  dataDirHostPath: /var/lib/rook   # mon/osd 元数据落在宿主机，卸载重装必须清空
+  skipUpgradeChecks: false
+  mon:
+    count: 3                       # 必须 3（或 5），允许单 mon 故障不失仲裁
+    allowMultiplePerNode: false    # 禁止同节点跑多个 mon，否则假 HA
+  mgr:
+    count: 2                       # 主备 mgr
+  dashboard:
+    enabled: true
+    ssl: false
+  storage:
+    useAllNodes: true
+    useAllDevices: true            # 使用每节点所有"空闲裸盘"（有分区/文件系统/挂载的盘一律跳过）
+    deviceFilter: "__DEVICE_FILTER__"  # 空=全用；建议显式指定如 nvme / sd[b-d] 防误吞系统盘
+  healthCheck:
+    daemonHealth:
+      mon:
+        disableMultipleMonPerNodeCheck: false
+  # 副本策略：池默认 size=3（3 节点最少值）。数据量大且可容忍校验损失时可另建 EC 池（见 README）

@@ -11,6 +11,7 @@ K8s 集群部署、数据库套件、离线交付与运维工具的一站式工�
 | [offline-delivery/](offline-delivery/) | **离线交付**：openEuler 离线安装包（docker / k8s / dify / apps / database 五包独立互不依赖），ARM64/AMD64 双架构 |
 | [k8s-optimizations/](k8s-optimizations/) | **K8s 优化配置**：ingress-nginx 生产优化、node-tuning、priority-class、优化方案文档 |
 | [delivery-tools/](delivery-tools/) | **交付工具**：镜像同步华为云 SWR（`images-manager.sh`）、应用导出/加载/部署（`app-export.sh` / `app-load-images.sh` / `app-deploy.sh`） |
+| [storage-ceph/](storage-ceph/) | **Ceph 分布式存储**：Rook-Ceph 多节点一键部署（≥3 worker），RBD(RWO)+CephFS(RWX) 双 SC 替代 NFS，含迁移手册 |
 | [linux-ops/](linux-ops/) | **Linux 运维 CLI**：服务器初始化、巡检、监控等模块化工具（lops） |
 
 ## 快速开始

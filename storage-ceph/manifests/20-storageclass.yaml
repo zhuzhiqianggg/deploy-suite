@@ -1,0 +1,50 @@
+# 双 StorageClass：应用侧只需把 storageClassName 从 nfs-client 换成下面任一个
+#   rook-ceph-block  → RBD 块存储（RWO，单 Pod 挂载，数据库/StatefulSet 数据盘首选，支持在线扩容+快照）
+#   rook-cephfs      → CephFS 文件存储（RWX，多 Pod 共享读写，对标原 NFS 共享 PVC）
+# Secret 名称是 Rook Helm 安装后自动生成的固定值，勿改
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"   # 确认稳定后可改 true 替换 nfs-client
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: replicapool                     # CephCluster CR 自带的默认副本池
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete                   # 业务 PVC 删除即销毁数据；重要数据改 Retain（见 README）
+allowVolumeExpansion: true              # RBD 支持在线扩容——NFS provisioner 做不到
+volumeBindingMode: Immediate
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-cephfs
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: rook-ceph.cephfs.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  fsName: rook-ceph-filesystem
+  pool: rook-ceph-filesystem-data0
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+mountOptions:
+  # 内核 cephfs 客户端挂载参数；多写并发场景保持默认即可
+  - reclaim_session=true

@@ -1,0 +1,21 @@
+# CephFS 共享文件系统（RWX 多 Pod 同读写）——对标 NFS 的共享目录能力
+# 会自动创建: fsName=rook-ceph-filesystem, 数据池=rook-ceph-filesystem-data0（replica3）
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystem
+metadata:
+  name: rook-ceph-filesystem
+  namespace: rook-ceph
+spec:
+  metadataPool:
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+  dataPools:
+  - name: data0
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+  preservePoolsOnDelete: true
+  metadataServer:
+    activeCount: 1        # 1 个 active MDS + 1 个 standby（由副本数决定）
+    activeStandby: true
