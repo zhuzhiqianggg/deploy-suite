@@ -272,7 +272,10 @@ spec:
         command:
         - sh
         - -c
-        - exec /usr/local/nebula/bin/nebula-graphd --flagfile /usr/local/nebula/etc/nebula-graphd.conf --daemonize=false --local_ip $POD_IP --meta_server_addrs nebula-metad-0.nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local:9559
+        # 命令行 flag 优先级高于 flagfile，无需为单个参数造全量 nebula-graphd.conf 的 ConfigMap。
+        # max_sessions_per_ip_per_user 默认 300 太小，多业务共用 graphd 会报
+        # "Too many sessions in this ip and user"，提升到 2000
+        - exec /usr/local/nebula/bin/nebula-graphd --flagfile /usr/local/nebula/etc/nebula-graphd.conf --daemonize=false --local_ip $POD_IP --meta_server_addrs nebula-metad-0.nebula-metad-headless.db-lianantech-hk-release.svc.cluster.local:9559 --max_sessions_per_ip_per_user=2000
         readinessProbe:
           tcpSocket:
             port: 9669
